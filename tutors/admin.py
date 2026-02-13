@@ -1,3 +1,6 @@
 from django.contrib import admin
+from .models import TutorProfile, TutorVerification, VerificationDocument
 
-# Register your models here.
+admin.site.register(TutorProfile)
+admin.site.register(TutorVerification)
+admin.site.register(VerificationDocument)

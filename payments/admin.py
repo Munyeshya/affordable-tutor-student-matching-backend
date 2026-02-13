@@ -1,3 +1,6 @@
 from django.contrib import admin
+from .models import Payment, TutorWalletLedger, Payout
 
-# Register your models here.
+admin.site.register(Payment)
+admin.site.register(TutorWalletLedger)
+admin.site.register(Payout)
