@@ -71,9 +71,31 @@ class CourseSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "tutor", "status", "created_at", "updated_at", "lessons")
 
 
+class PublicCourseSerializer(CourseSerializer):
+    lessons = serializers.SerializerMethodField()
+
+    def get_lessons(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return LessonSummarySerializer(obj.lessons.filter(is_preview=True), many=True).data
+
+        from payments.models import CoursePurchase
+        from accounts.models import User
+
+        user = request.user
+        if user.role in {User.Role.TUTOR, User.Role.ADMIN} or CoursePurchase.objects.filter(student=user, course=obj, status=CoursePurchase.Status.PAID).exists():
+            return LessonSummarySerializer(obj.lessons.all(), many=True).data
+
+        return LessonSummarySerializer(obj.lessons.filter(is_preview=True), many=True).data
+
+
 class CourseCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
         fields = ("id", "title", "description", "subject", "academic_level", "price", "thumbnail", "status")
         read_only_fields = ("id",)
 
+
+class CourseModerationSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=Course.Status.choices)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")

@@ -8,7 +8,9 @@ from accounts.permissions import IsAdminRole, IsTutor
 from catalog.models import Course, Lesson, Subject, TutorSubject
 from catalog.serializers import (
     CourseCreateUpdateSerializer,
+    CourseModerationSerializer,
     CourseSerializer,
+    PublicCourseSerializer,
     LessonSerializer,
     SubjectSerializer,
     TutorSubjectSerializer,
@@ -42,7 +44,7 @@ class TutorSubjectDeleteView(APIView):
 
 
 class CourseListView(generics.ListAPIView):
-    serializer_class = CourseSerializer
+    serializer_class = PublicCourseSerializer
     permission_classes = []
     authentication_classes = []
 
@@ -101,6 +103,41 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Course.objects.filter(tutor=self.request.user)
 
 
+class TutorCourseSubmitForReviewView(APIView):
+    permission_classes = [IsTutor]
+
+    def patch(self, request, pk):
+        course = Course.objects.get(pk=pk, tutor=request.user)
+        if course.status not in {Course.Status.DRAFT, Course.Status.REJECTED}:
+            return Response({"detail": "Only draft or rejected courses can be submitted."}, status=400)
+        course.status = Course.Status.PENDING_REVIEW
+        course.save(update_fields=["status", "updated_at"])
+        return Response(CourseSerializer(course, context={"request": request}).data, status=200)
+
+
+class AdminCourseModerationView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def patch(self, request, pk):
+        course = Course.objects.select_related("tutor", "subject").prefetch_related("lessons").get(pk=pk)
+        serializer = CourseModerationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        course.status = serializer.validated_data["status"]
+        course.save(update_fields=["status", "updated_at"])
+
+        return Response(CourseSerializer(course, context={"request": request}).data, status=200)
+
+
+class PublicCourseDetailView(generics.RetrieveAPIView):
+    serializer_class = PublicCourseSerializer
+    permission_classes = []
+    authentication_classes = []
+
+    def get_queryset(self):
+        return Course.objects.select_related("tutor", "subject").prefetch_related("lessons").filter(status=Course.Status.PUBLISHED)
+
+
 class LessonListCreateView(generics.ListCreateAPIView):
     serializer_class = LessonSerializer
     permission_classes = [IsTutor]
@@ -111,7 +148,8 @@ class LessonListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         course_id = self.kwargs["course_id"]
-        serializer.save(course_id=course_id)
+        course = Course.objects.get(pk=course_id, tutor=self.request.user)
+        serializer.save(course=course)
 
 
 class LessonDetailView(generics.RetrieveUpdateDestroyAPIView):
