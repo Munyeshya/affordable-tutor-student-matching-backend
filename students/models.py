@@ -14,3 +14,14 @@ class StudentProfile(TimeStampedModel):
 
     def __str__(self):
         return self.full_name
+
+
+class ParentProfile(TimeStampedModel):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="parent_profile")
+    full_name = models.CharField(max_length=120)
+    location = models.CharField(max_length=120, blank=True, default="")
+    phone_number = models.CharField(max_length=30, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+
+    def __str__(self):
+        return self.full_name

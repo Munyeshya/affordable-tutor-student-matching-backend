@@ -3,8 +3,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from accounts.models import User
-from accounts.serializers import LoginSerializer, LogoutSerializer, RegisterSerializer, UserSerializer
+from accounts.serializers import (
+    AuthUserDetailSerializer,
+    LoginSerializer,
+    LogoutSerializer,
+    MeUpdateSerializer,
+    RegisterSerializer,
+    UserSerializer,
+)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -47,5 +53,10 @@ class LogoutView(APIView):
 
 class MeView(APIView):
     def get(self, request):
-        return Response(UserSerializer(request.user).data)
+        return Response(AuthUserDetailSerializer(request.user).data)
 
+    def patch(self, request):
+        serializer = MeUpdateSerializer(instance=request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(AuthUserDetailSerializer(user).data)
