@@ -5,6 +5,7 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         STUDENT = "STUDENT", "Student"
         TUTOR = "TUTOR", "Tutor"
+        PARENT = "PARENT", "Parent"
         ADMIN = "ADMIN", "Admin"
 
     # Use email login
