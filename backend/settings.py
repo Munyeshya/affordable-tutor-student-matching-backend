@@ -53,6 +53,8 @@ INSTALLED_APPS = [
     "tutors",
     "catalog",
     "analytics",
+    "chats",
+    "notifications",
     "assessments",
     "availability",
     "bookings",

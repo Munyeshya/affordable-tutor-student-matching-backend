@@ -12,6 +12,7 @@ from assessments.models import (
 )
 from catalog.models import Lesson
 from payments.models import CoursePurchase
+from notifications.utils import create_notification
 
 
 class LessonAssessmentQuestionSerializer(serializers.ModelSerializer):
@@ -239,7 +240,7 @@ class AssessmentResultConfirmationCreateSerializer(serializers.Serializer):
         post_attempt = validated_data["post_attempt"]
         improvement = post_attempt.percentage - pre_attempt.percentage
 
-        return AssessmentResultConfirmation.objects.create(
+        confirmation = AssessmentResultConfirmation.objects.create(
             student=self.context["request"].user,
             lesson=validated_data["lesson"],
             pre_test_attempt=pre_attempt,
@@ -251,3 +252,12 @@ class AssessmentResultConfirmationCreateSerializer(serializers.Serializer):
             student_comment=validated_data.get("student_comment", ""),
             confirmed_at=timezone.now() if validated_data["student_confirmation_status"] == AssessmentResultConfirmation.Status.CONFIRMED else None,
         )
+        create_notification(
+            user=validated_data["lesson"].course.tutor,
+            actor=self.context["request"].user,
+            title="Assessment result confirmed",
+            body=f"{self.context['request'].user.get_full_name() or self.context['request'].user.email} confirmed learning results for {validated_data['lesson'].title}.",
+            link="/api/assessments/confirmations/",
+            kind="ASSESSMENT_CONFIRMATION",
+        )
+        return confirmation

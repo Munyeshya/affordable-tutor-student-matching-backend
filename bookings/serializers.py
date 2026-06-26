@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
@@ -7,6 +9,7 @@ from availability.models import AvailabilitySlot
 from bookings.models import Booking, BookingEvent
 from catalog.models import Subject
 from catalog.models import TutorSubject
+from notifications.utils import create_notification
 from tutors.models import TutorVerification
 
 
@@ -134,7 +137,7 @@ class BookingCreateSerializer(serializers.Serializer):
         hourly_rate = getattr(getattr(tutor, "tutor_profile", None), "hourly_rate", None)
         start_datetime = validated_data["start_datetime"]
         end_datetime = validated_data["end_datetime"]
-        hours = max((end_datetime - start_datetime).total_seconds() / 3600, 0)
+        hours = Decimal(str(max((end_datetime - start_datetime).total_seconds() / 3600, 0)))
         total_amount = (hourly_rate * hours) if hourly_rate is not None else None
 
         booking = Booking.objects.create(
@@ -151,6 +154,14 @@ class BookingCreateSerializer(serializers.Serializer):
         )
 
         BookingEvent.objects.create(booking=booking, actor=student, action="CREATED", message="Booking created.")
+        create_notification(
+            user=tutor,
+            actor=student,
+            title="New booking request",
+            body=f"{student.get_full_name() or student.email} created a booking request.",
+            link=f"/api/bookings/{booking.id}/",
+            kind="BOOKING_CREATED",
+        )
 
         if slot:
             slot.is_booked = True

@@ -19,6 +19,7 @@ from payments.serializers import (
     PayoutSerializer,
 )
 from catalog.models import Lesson
+from notifications.utils import create_notification
 
 
 class PaymentListView(generics.ListAPIView):
@@ -66,6 +67,14 @@ class PayoutRequestView(APIView):
             amount=serializer.validated_data["amount"],
             status=Payout.Status.REQUESTED,
         )
+        create_notification(
+            user=request.user,
+            actor=request.user,
+            title="Payout requested",
+            body=f"You requested a payout of {payout.amount}.",
+            link="/api/payments/payouts/",
+            kind="PAYOUT_REQUESTED",
+        )
         return Response(PayoutSerializer(payout).data, status=status.HTTP_201_CREATED)
 
 
@@ -81,6 +90,14 @@ class PayoutDecisionView(APIView):
         if status_value == Payout.Status.PAID:
             payout.paid_at = timezone.now()
         payout.save(update_fields=["status", "paid_at", "updated_at"])
+        create_notification(
+            user=payout.tutor,
+            actor=request.user,
+            title="Payout updated",
+            body=f"Your payout was marked as {status_value.lower()}.",
+            link="/api/payments/payouts/",
+            kind=f"PAYOUT_{status_value}",
+        )
         return Response(PayoutSerializer(payout).data, status=status.HTTP_200_OK)
 
 

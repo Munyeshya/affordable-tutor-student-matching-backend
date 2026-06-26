@@ -4,6 +4,7 @@ from rest_framework import serializers
 from bookings.models import Booking
 from catalog.models import Course
 from payments.models import CoursePurchase, LessonProgress, Payment, Payout
+from notifications.utils import create_notification
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -65,6 +66,14 @@ class BookingPaymentCreateSerializer(serializers.Serializer):
                 "paid_at": timezone.now(),
             },
         )
+        create_notification(
+            user=booking.tutor,
+            actor=booking.student,
+            title="Booking payment received",
+            body=f"{booking.student.get_full_name() or booking.student.email} paid for booking #{booking.id}.",
+            link=f"/api/payments/bookings/",
+            kind="BOOKING_PAYMENT",
+        )
         return payment
 
 
@@ -124,6 +133,14 @@ class CoursePurchaseCreateSerializer(serializers.Serializer):
             transaction_reference=validated_data.get("transaction_reference", ""),
             purchased_at=timezone.now(),
         )
+        create_notification(
+            user=course.tutor,
+            actor=student,
+            title="Course purchased",
+            body=f"{student.get_full_name() or student.email} purchased {course.title}.",
+            link=f"/api/payments/course-purchases/",
+            kind="COURSE_PURCHASE",
+        )
         return purchase
 
 
@@ -164,4 +181,3 @@ class PayoutSerializer(serializers.ModelSerializer):
 
 class PayoutRequestSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-

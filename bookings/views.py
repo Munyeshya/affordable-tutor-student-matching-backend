@@ -9,6 +9,7 @@ from accounts.permissions import IsStudent, IsTutor
 from bookings.models import Booking, BookingEvent
 from bookings.serializers import BookingActionSerializer, BookingCreateSerializer, BookingSerializer
 from availability.models import AvailabilitySlot
+from notifications.utils import create_notification
 
 
 class BookingListView(generics.ListAPIView):
@@ -81,5 +82,14 @@ class BookingActionView(APIView):
             ).update(is_booked=False)
 
         BookingEvent.objects.create(booking=booking, actor=user, action=action, message=message)
+        other_user = booking.tutor if user.id == booking.student_id else booking.student
+        create_notification(
+            user=other_user,
+            actor=user,
+            title=f"Booking {action.lower()}",
+            body=message or f"Your booking was {action.lower()} by {user.get_full_name() or user.email}.",
+            link=f"/api/bookings/{booking.id}/",
+            kind=f"BOOKING_{action}",
+        )
 
         return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
