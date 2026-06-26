@@ -1,8 +1,71 @@
 from django.utils import timezone
 from rest_framework import serializers
 
+from bookings.models import Booking
 from catalog.models import Course
-from payments.models import CoursePurchase, LessonProgress
+from payments.models import CoursePurchase, LessonProgress, Payment, Payout
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    booking_id = serializers.IntegerField(source="booking.id", read_only=True)
+    student_name = serializers.CharField(source="student.get_full_name", read_only=True)
+    tutor_name = serializers.CharField(source="tutor.get_full_name", read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = (
+            "id",
+            "booking",
+            "booking_id",
+            "student",
+            "student_name",
+            "tutor",
+            "tutor_name",
+            "amount",
+            "currency",
+            "provider",
+            "status",
+            "paid_at",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "student", "tutor", "amount", "currency", "provider", "status", "paid_at", "created_at", "updated_at")
+
+
+class BookingPaymentCreateSerializer(serializers.Serializer):
+    booking_id = serializers.IntegerField()
+    provider = serializers.CharField(required=False, default="SIMULATED")
+    transaction_reference = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_booking_id(self, value):
+        try:
+            booking = Booking.objects.select_related("student", "tutor").get(pk=value)
+        except Booking.DoesNotExist:
+            raise serializers.ValidationError("Booking not found.")
+
+        request = self.context["request"]
+        if booking.student_id != request.user.id:
+            raise serializers.ValidationError("You can only pay for your own booking.")
+        if booking.status not in {Booking.Status.CONFIRMED, Booking.Status.COMPLETED}:
+            raise serializers.ValidationError("Booking must be confirmed before payment.")
+
+        return value
+
+    def create(self, validated_data):
+        booking = Booking.objects.select_related("student", "tutor").get(pk=validated_data["booking_id"])
+        payment, _ = Payment.objects.update_or_create(
+            booking=booking,
+            defaults={
+                "student": booking.student,
+                "tutor": booking.tutor,
+                "amount": booking.total_amount or 0,
+                "currency": booking.currency,
+                "provider": validated_data.get("provider", "SIMULATED"),
+                "status": Payment.Status.PAID,
+                "paid_at": timezone.now(),
+            },
+        )
+        return payment
 
 
 class CoursePurchaseSerializer(serializers.ModelSerializer):
@@ -88,4 +151,17 @@ class LessonProgressUpdateSerializer(serializers.Serializer):
     lesson_id = serializers.IntegerField()
     watched_duration = serializers.IntegerField(min_value=0)
     is_completed = serializers.BooleanField(required=False, default=False)
+
+
+class PayoutSerializer(serializers.ModelSerializer):
+    tutor_name = serializers.CharField(source="tutor.get_full_name", read_only=True)
+
+    class Meta:
+        model = Payout
+        fields = ("id", "tutor", "tutor_name", "amount", "status", "paid_at", "created_at", "updated_at")
+        read_only_fields = ("id", "tutor", "tutor_name", "status", "paid_at", "created_at", "updated_at")
+
+
+class PayoutRequestSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
 

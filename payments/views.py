@@ -5,15 +5,83 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsStudent
-from catalog.models import Course, Lesson
-from payments.models import CoursePurchase, LessonProgress
+from accounts.permissions import IsAdminRole, IsStudent, IsTutor
+from bookings.models import Booking
+from payments.models import CoursePurchase, LessonProgress, Payment, Payout
 from payments.serializers import (
+    BookingPaymentCreateSerializer,
     CoursePurchaseCreateSerializer,
     CoursePurchaseSerializer,
     LessonProgressSerializer,
     LessonProgressUpdateSerializer,
+    PaymentSerializer,
+    PayoutRequestSerializer,
+    PayoutSerializer,
 )
+from catalog.models import Lesson
+
+
+class PaymentListView(generics.ListAPIView):
+    serializer_class = PaymentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == User.Role.STUDENT:
+            return Payment.objects.filter(student=user).select_related("booking", "student", "tutor").order_by("-created_at")
+        if user.role == User.Role.TUTOR:
+            return Payment.objects.filter(tutor=user).select_related("booking", "student", "tutor").order_by("-created_at")
+        return Payment.objects.select_related("booking", "student", "tutor").order_by("-created_at")
+
+
+class BookingPaymentCreateView(APIView):
+    permission_classes = [IsStudent]
+
+    def post(self, request):
+        serializer = BookingPaymentCreateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save()
+        return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
+
+
+class PayoutListView(generics.ListAPIView):
+    serializer_class = PayoutSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == User.Role.TUTOR:
+            return Payout.objects.filter(tutor=user).order_by("-created_at")
+        return Payout.objects.select_related("tutor").order_by("-created_at")
+
+
+class PayoutRequestView(APIView):
+    permission_classes = [IsTutor]
+
+    def post(self, request):
+        serializer = PayoutRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payout = Payout.objects.create(
+            tutor=request.user,
+            amount=serializer.validated_data["amount"],
+            status=Payout.Status.REQUESTED,
+        )
+        return Response(PayoutSerializer(payout).data, status=status.HTTP_201_CREATED)
+
+
+class PayoutDecisionView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def patch(self, request, pk):
+        payout = get_object_or_404(Payout, pk=pk)
+        status_value = request.data.get("status")
+        if status_value not in {Payout.Status.APPROVED, Payout.Status.PAID, Payout.Status.REJECTED}:
+            return Response({"detail": "Invalid payout status."}, status=status.HTTP_400_BAD_REQUEST)
+        payout.status = status_value
+        if status_value == Payout.Status.PAID:
+            payout.paid_at = timezone.now()
+        payout.save(update_fields=["status", "paid_at", "updated_at"])
+        return Response(PayoutSerializer(payout).data, status=status.HTTP_200_OK)
 
 
 class CoursePurchaseListView(generics.ListAPIView):
@@ -73,4 +141,3 @@ class StudentLessonProgressUpdateView(APIView):
         progress.save()
 
         return Response(LessonProgressSerializer(progress).data, status=status.HTTP_200_OK)
-
