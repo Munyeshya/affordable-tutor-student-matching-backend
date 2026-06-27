@@ -30,6 +30,21 @@ class TutorVerification(TimeStampedModel):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, default="")
 
+    def uploaded_required_document_types(self):
+        return set(
+            self.documents.filter(doc_type__in=[VerificationDocument.DocType.ID, VerificationDocument.DocType.CERTIFICATE]).values_list(
+                "doc_type", flat=True
+            )
+        )
+
+    def missing_required_document_types(self):
+        uploaded = self.uploaded_required_document_types()
+        required = [VerificationDocument.DocType.ID, VerificationDocument.DocType.CERTIFICATE]
+        return [doc_type for doc_type in required if doc_type not in uploaded]
+
+    def has_required_documents(self):
+        return not self.missing_required_document_types()
+
 class VerificationDocument(TimeStampedModel):
     class DocType(models.TextChoices):
         ID = "ID", "National ID"

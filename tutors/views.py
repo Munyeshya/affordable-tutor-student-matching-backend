@@ -58,6 +58,13 @@ class TutorVerificationDocumentView(APIView):
         serializer.is_valid(raise_exception=True)
         document = serializer.save()
 
+        if verification.status != TutorVerification.Status.PENDING:
+            verification.status = TutorVerification.Status.PENDING
+            verification.reviewed_by = None
+            verification.reviewed_at = None
+            verification.notes = ""
+            verification.save(update_fields=["status", "reviewed_by", "reviewed_at", "notes", "updated_at"])
+
         from tutors.serializers import VerificationDocumentSerializer
 
         return Response(VerificationDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
@@ -116,6 +123,15 @@ class TutorVerificationDecisionView(APIView):
         verification = TutorVerification.objects.select_related("tutor").get(pk=pk)
         serializer = TutorVerificationActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        if serializer.validated_data["status"] == TutorVerification.Status.APPROVED and not verification.has_required_documents():
+            return Response(
+                {
+                    "detail": "Tutor must upload both a national ID and a qualification certificate before approval.",
+                    "missing_documents": verification.missing_required_document_types(),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         verification.status = serializer.validated_data["status"]
         verification.notes = serializer.validated_data.get("notes", "")
