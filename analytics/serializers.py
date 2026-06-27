@@ -9,3 +9,6 @@ class DashboardSummarySerializer(serializers.Serializer):
     courses = serializers.DictField()
     revenue = serializers.DictField()
     employment_impact = serializers.DictField()
+    trends = serializers.DictField()
+    leaderboards = serializers.DictField()
+    platform_health = serializers.DictField()

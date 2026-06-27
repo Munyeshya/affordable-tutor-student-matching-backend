@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from catalog.models import Subject, TutorSubject
-from students.models import StudentProfile
+from students.models import ParentProfile, StudentProfile
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
@@ -34,6 +34,13 @@ class AdminDashboardTests(TestCase):
             role=User.Role.STUDENT,
         )
         StudentProfile.objects.create(user=self.student, full_name="Student Dashboard")
+        self.parent = User.objects.create_user(
+            username="parent-dashboard",
+            email="parent-dashboard@example.com",
+            password="pass12345",
+            role=User.Role.PARENT,
+        )
+        ParentProfile.objects.create(user=self.parent, full_name="Parent Dashboard")
 
         self.ready_tutor = User.objects.create_user(
             username="ready-tutor",
@@ -78,6 +85,10 @@ class AdminDashboardTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("tutor_pipeline", response.data)
+        self.assertIn("trends", response.data)
+        self.assertIn("leaderboards", response.data)
+        self.assertIn("platform_health", response.data)
         self.assertEqual(response.data["tutor_pipeline"]["marketplace_ready_tutors"], 1)
         self.assertEqual(response.data["tutor_pipeline"]["pending_verifications"], 1)
         self.assertEqual(response.data["users"]["total_tutors"], 2)
+        self.assertEqual(response.data["employment_impact"]["parent_accounts"], 1)

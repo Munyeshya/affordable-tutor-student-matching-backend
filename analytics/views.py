@@ -8,11 +8,12 @@ from accounts.models import User
 from accounts.permissions import IsAdminRole
 from analytics.serializers import DashboardSummarySerializer
 from assessments.models import AssessmentResultConfirmation
-from bookings.models import Booking
+from bookings.models import Booking, Dispute
 from catalog.models import Course, Lesson
+from notifications.models import Notification
 from payments.models import CoursePurchase, Payment
 from reviews.models import LessonReview, Review
-from students.models import ParentProfile, StudentProfile
+from students.models import ParentProfile, ParentStudentLink, StudentProfile
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification
 from tutors.utils import get_marketplace_ready_tutor_ids
 
@@ -119,6 +120,68 @@ class AdminDashboardView(APIView):
             "tutors_selling_courses": Course.objects.values("tutor").distinct().count(),
             "income_generated_through_platform": CoursePurchase.objects.filter(status=CoursePurchase.Status.PAID).aggregate(total=Sum("amount"))["total"] or 0,
             "estimated_unemployed_youth_supported": TutorProfile.objects.count(),
+            "parent_accounts": ParentProfile.objects.count(),
+            "linked_students": ParentStudentLink.objects.values("student").distinct().count(),
+        }
+
+        trends = {
+            "monthly_users": list(
+                User.objects.annotate(month=TruncMonth("date_joined"))
+                .values("month")
+                .annotate(count=Count("id"))
+                .order_by("month")
+            ),
+            "monthly_bookings": list(
+                Booking.objects.annotate(month=TruncMonth("created_at"))
+                .values("month")
+                .annotate(count=Count("id"))
+                .order_by("month")
+            ),
+            "monthly_revenue": list(
+                CoursePurchase.objects.filter(status=CoursePurchase.Status.PAID)
+                .annotate(month=TruncMonth("purchased_at"))
+                .values("month")
+                .annotate(total=Sum("amount"))
+                .order_by("month")
+            ),
+            "monthly_confirmed_learning": list(
+                educational_impact_qs.annotate(month=TruncMonth("confirmed_at"))
+                .values("month")
+                .annotate(count=Count("id"))
+                .order_by("month")
+            ),
+        }
+
+        leaderboards = {
+            "top_tutors_by_bookings": list(
+                Booking.objects.values("tutor__id", "tutor__email", "tutor__tutor_profile__full_name")
+                .annotate(total=Count("id"))
+                .order_by("-total")[:10]
+            ),
+            "top_students_by_bookings": list(
+                Booking.objects.values("student__id", "student__email", "student__student_profile__full_name")
+                .annotate(total=Count("id"))
+                .order_by("-total")[:10]
+            ),
+            "top_subjects_by_bookings": list(
+                Booking.objects.values("subject__id", "subject__name")
+                .annotate(total=Count("id"))
+                .order_by("-total")[:10]
+            ),
+            "top_courses_by_purchases": list(
+                CoursePurchase.objects.filter(status=CoursePurchase.Status.PAID)
+                .values("course__id", "course__title")
+                .annotate(total=Count("id"), revenue=Sum("amount"))
+                .order_by("-total")[:10]
+            ),
+        }
+
+        platform_health = {
+            "pending_verifications": TutorVerification.objects.filter(status=TutorVerification.Status.PENDING).count(),
+            "pending_course_reviews": Course.objects.filter(status=Course.Status.PENDING_REVIEW).count(),
+            "open_bookings": Booking.objects.filter(status=Booking.Status.PENDING).count(),
+            "open_disputes": Dispute.objects.filter(status__in=["OPEN", "UNDER_REVIEW"]).count(),
+            "unread_notifications": Notification.objects.filter(is_read=False).count(),
         }
 
         payload = {
@@ -129,5 +192,8 @@ class AdminDashboardView(APIView):
             "courses": courses,
             "revenue": revenue,
             "employment_impact": employment_impact,
+            "trends": trends,
+            "leaderboards": leaderboards,
+            "platform_health": platform_health,
         }
         return Response(DashboardSummarySerializer(payload).data)
