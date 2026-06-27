@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from catalog.models import Subject, TutorSubject
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
@@ -25,6 +26,7 @@ class TutorVerificationDocumentTests(TestCase):
             role=User.Role.TUTOR,
         )
         TutorProfile.objects.create(user=self.tutor, full_name="Tutor Docs", hourly_rate=15, teaches_online=True)
+        self.subject = Subject.objects.create(name="Mathematics")
         self.admin = User.objects.create_user(
             username="admin-docs",
             email="admin-docs@example.com",
@@ -57,6 +59,9 @@ class TutorVerificationDocumentTests(TestCase):
             format="multipart",
         )
 
+    def _add_tutor_subject(self, level=TutorSubject.Level.PRIMARY):
+        return TutorSubject.objects.create(tutor=self.tutor, subject=self.subject, level=level)
+
     def test_tutor_can_upload_required_documents(self):
         id_response = self._upload_document(VerificationDocument.DocType.ID, "national-id.pdf")
         cert_response = self._upload_document(VerificationDocument.DocType.CERTIFICATE, "certificate.pdf")
@@ -85,6 +90,7 @@ class TutorVerificationDocumentTests(TestCase):
     def test_admin_can_approve_after_required_documents_are_uploaded(self):
         self._upload_document(VerificationDocument.DocType.ID, "national-id.pdf")
         self._upload_document(VerificationDocument.DocType.CERTIFICATE, "certificate.pdf")
+        self._add_tutor_subject()
         self._upload_signed_agreement()
 
         verification = TutorVerification.objects.get(tutor=self.tutor)
@@ -116,6 +122,7 @@ class TutorAgreementTests(TestCase):
             role=User.Role.TUTOR,
         )
         TutorProfile.objects.create(user=self.tutor, full_name="Tutor Agreement", hourly_rate=15, teaches_online=True)
+        self.subject = Subject.objects.create(name="Physics")
         self.admin = User.objects.create_user(
             username="admin-agreement",
             email="admin-agreement@example.com",
@@ -135,6 +142,9 @@ class TutorAgreementTests(TestCase):
             },
             format="multipart",
         )
+
+    def _add_tutor_subject(self, level=TutorSubject.Level.PRIMARY):
+        return TutorSubject.objects.create(tutor=self.tutor, subject=self.subject, level=level)
 
     def test_tutor_can_download_agreement_template(self):
         self.client.force_authenticate(self.tutor)
@@ -164,6 +174,7 @@ class TutorAgreementTests(TestCase):
     def test_admin_cannot_approve_without_signed_agreement(self):
         self._upload_document(VerificationDocument.DocType.ID, "national-id.pdf")
         self._upload_document(VerificationDocument.DocType.CERTIFICATE, "certificate.pdf")
+        self._add_tutor_subject()
 
         verification = TutorVerification.objects.get(tutor=self.tutor)
         self.client.force_authenticate(self.admin)
@@ -179,6 +190,7 @@ class TutorAgreementTests(TestCase):
     def test_admin_can_approve_after_signed_agreement_is_uploaded(self):
         self._upload_document(VerificationDocument.DocType.ID, "national-id.pdf")
         self._upload_document(VerificationDocument.DocType.CERTIFICATE, "certificate.pdf")
+        self._add_tutor_subject()
         self.client.force_authenticate(self.tutor)
         self.client.post(
             "/api/tutors/agreement/",

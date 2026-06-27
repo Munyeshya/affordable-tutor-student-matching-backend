@@ -12,11 +12,27 @@ class SubjectSerializer(serializers.ModelSerializer):
 
 class TutorSubjectSerializer(serializers.ModelSerializer):
     subject_name = serializers.CharField(source="subject.name", read_only=True)
+    level_display = serializers.CharField(source="get_level_display", read_only=True)
 
     class Meta:
         model = TutorSubject
-        fields = ("id", "tutor", "subject", "subject_name", "level", "experience_years", "created_at", "updated_at")
+        fields = (
+            "id",
+            "tutor",
+            "subject",
+            "subject_name",
+            "level",
+            "level_display",
+            "experience_years",
+            "created_at",
+            "updated_at",
+        )
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate_level(self, value):
+        if not value:
+            raise serializers.ValidationError("Please choose the level you want to teach.")
+        return value
 
 
 class LessonSerializer(serializers.ModelSerializer):

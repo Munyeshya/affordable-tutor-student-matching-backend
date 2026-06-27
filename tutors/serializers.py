@@ -57,6 +57,7 @@ class TutorProfileSerializer(serializers.ModelSerializer):
 class PublicTutorSerializer(serializers.ModelSerializer):
     verification_status = serializers.SerializerMethodField()
     subjects = serializers.SerializerMethodField()
+    subject_levels = serializers.SerializerMethodField()
 
     class Meta:
         model = TutorProfile
@@ -72,6 +73,7 @@ class PublicTutorSerializer(serializers.ModelSerializer):
             "teaches_in_person",
             "verification_status",
             "subjects",
+            "subject_levels",
         )
 
     def get_verification_status(self, obj):
@@ -85,6 +87,15 @@ class PublicTutorSerializer(serializers.ModelSerializer):
             .values_list("subject__name", flat=True)
             .distinct()
         )
+
+    def get_subject_levels(self, obj):
+        return [
+            {
+                "subject": item["subject__name"],
+                "level": item["level"],
+            }
+            for item in TutorSubject.objects.filter(tutor=obj.user).select_related("subject").values("subject__name", "level").order_by("subject__name", "level")
+        ]
 
 
 class TutorVerificationSerializer(serializers.ModelSerializer):

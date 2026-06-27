@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole, IsTutor
+from catalog.models import TutorSubject
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification
 from tutors.serializers import (
     TutorProfileSerializer,
@@ -180,6 +181,26 @@ class TutorVerificationDecisionView(APIView):
                 {
                     "detail": "Tutor must upload both a national ID and a qualification certificate before approval.",
                     "missing_documents": verification.missing_required_document_types(),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tutor_subjects = verification.tutor.tutor_subjects.select_related("subject")
+        if serializer.validated_data["status"] == TutorVerification.Status.APPROVED and not tutor_subjects.exists():
+            return Response(
+                {
+                    "detail": "Tutor must choose at least one subject and level before approval.",
+                    "subjects_required": True,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invalid_levels = [item.level for item in tutor_subjects if item.level not in TutorSubject.Level.values]
+        if serializer.validated_data["status"] == TutorVerification.Status.APPROVED and invalid_levels:
+            return Response(
+                {
+                    "detail": "Tutor subjects must use one of the supported levels.",
+                    "invalid_levels": invalid_levels,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )

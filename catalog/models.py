@@ -10,9 +10,15 @@ class Subject(TimeStampedModel):
         return self.name
 
 class TutorSubject(TimeStampedModel):
+    class Level(models.TextChoices):
+        PRIMARY = "PRIMARY", "Primary"
+        SECONDARY_LOWER = "SECONDARY_LOWER", "Secondary Lower Level"
+        SECONDARY_UPPER = "SECONDARY_UPPER", "Secondary Upper Level"
+        UNIVERSITY = "UNIVERSITY", "University"
+
     tutor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tutor_subjects")
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name="tutors")
-    level = models.CharField(max_length=120, blank=True, default="")
+    level = models.CharField(max_length=30, choices=Level.choices, blank=True, default="", db_index=True)
     experience_years = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
