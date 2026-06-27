@@ -184,6 +184,55 @@ class CatalogAccessTests(TestCase):
         self.assertIn("Approved Course", titles)
         self.assertNotIn("Hidden Course", titles)
 
+    def test_public_course_list_supports_affordability_filters(self):
+        cheap_tutor = User.objects.create_user(username="cheap-course", email="cheap-course@example.com", password="pass12345", role=User.Role.TUTOR)
+        TutorProfile.objects.create(user=cheap_tutor, full_name="Cheap Course Tutor", hourly_rate=10, teaches_online=True)
+        cheap_verification = TutorVerification.objects.create(tutor=cheap_tutor, status=TutorVerification.Status.APPROVED)
+        TutorSubject.objects.create(tutor=cheap_tutor, subject=self.subject, level=TutorSubject.Level.SECONDARY_UPPER)
+        VerificationDocument.objects.create(
+            verification=cheap_verification,
+            doc_type=VerificationDocument.DocType.ID,
+            file="verification_docs/id.pdf",
+        )
+        VerificationDocument.objects.create(
+            verification=cheap_verification,
+            doc_type=VerificationDocument.DocType.CERTIFICATE,
+            file="verification_docs/certificate.pdf",
+        )
+        TutorAgreement.objects.create(
+            tutor=cheap_tutor,
+            status=TutorAgreement.Status.SIGNED,
+            agreed_to_terms=True,
+            signed_name="Cheap Course Tutor",
+            signed_file="tutor_agreements/example.pdf",
+        )
+        Course.objects.create(
+            tutor=cheap_tutor,
+            title="Cheap Course",
+            description="Affordable",
+            subject=self.subject,
+            academic_level="SECONDARY_UPPER",
+            price=15,
+            status=Course.Status.PUBLISHED,
+        )
+        Course.objects.create(
+            tutor=self.tutor,
+            title="Pricier Course",
+            description="More expensive",
+            subject=self.subject,
+            academic_level="SECONDARY_UPPER",
+            price=80,
+            status=Course.Status.PUBLISHED,
+        )
+
+        self.client.force_authenticate(self.student)
+        response = self.client.get("/api/catalog/courses/?max_price=20")
+
+        self.assertEqual(response.status_code, 200)
+        titles = [item["title"] for item in response.data]
+        self.assertIn("Cheap Course", titles)
+        self.assertNotIn("Pricier Course", titles)
+
     def test_admin_rejection_requires_reason_and_writes_course_audit_trail(self):
         admin = User.objects.create_user(
             username="course-admin",

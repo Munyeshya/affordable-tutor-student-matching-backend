@@ -61,6 +61,9 @@ class CourseListView(generics.ListAPIView):
         lesson = self.request.query_params.get("lesson")
         topic = self.request.query_params.get("topic")
         subject = self.request.query_params.get("subject")
+        min_price = self.request.query_params.get("min_price")
+        max_price = self.request.query_params.get("max_price")
+        sort = self.request.query_params.get("sort")
 
         text_query = query or name
         if text_query:
@@ -79,8 +82,16 @@ class CourseListView(generics.ListAPIView):
             queryset = queryset.filter(lessons__topic__icontains=topic)
         if subject:
             queryset = queryset.filter(Q(subject__name__icontains=subject) | Q(title__icontains=subject))
+        if min_price:
+            queryset = queryset.filter(price__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(price__lte=max_price)
 
-        return queryset.distinct().order_by("-created_at")
+        if sort == "price_high":
+            return queryset.distinct().order_by("-price", "-created_at")
+        if sort == "newest":
+            return queryset.distinct().order_by("-created_at")
+        return queryset.distinct().order_by("price", "-created_at")
 
 
 class TutorCourseListView(generics.ListAPIView):

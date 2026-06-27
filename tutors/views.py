@@ -299,7 +299,12 @@ class PublicTutorListView(generics.ListAPIView):
         if max_rate:
             queryset = queryset.filter(hourly_rate__lte=max_rate)
 
-        return queryset.order_by("full_name")
+        sort = self.request.query_params.get("sort")
+        if sort == "price_high":
+            return queryset.order_by("-hourly_rate", "full_name")
+        if sort == "name":
+            return queryset.order_by("full_name")
+        return queryset.order_by("hourly_rate", "full_name")
 
 
 class TutorVerificationDecisionView(APIView):

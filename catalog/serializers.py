@@ -175,6 +175,11 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Thumbnail must be smaller than 10 MB.")
         return value
 
+    def validate_price(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Price cannot be negative.")
+        return value
+
     def get_thumbnail_url(self, obj):
         request = self.context.get("request")
         if not obj.thumbnail:

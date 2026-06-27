@@ -280,6 +280,47 @@ class TutorSetupAndSearchTests(TestCase):
         self.assertEqual(by_topic.data[0]["full_name"], "Search Tutor")
         self.assertEqual(by_level.data[0]["full_name"], "Search Tutor")
 
+    def test_public_tutor_search_defaults_to_affordable_ordering(self):
+        cheap_tutor = User.objects.create_user(
+            username="cheap-tutor",
+            email="cheap-tutor@example.com",
+            password="pass12345",
+            role=User.Role.TUTOR,
+        )
+        TutorProfile.objects.create(
+            user=cheap_tutor,
+            full_name="Cheap Tutor",
+            headline="Budget friendly coach",
+            bio="Affordable support.",
+            hourly_rate=20,
+            teaches_online=True,
+        )
+        cheap_verification = TutorVerification.objects.create(tutor=cheap_tutor, status=TutorVerification.Status.APPROVED)
+        TutorSubject.objects.create(tutor=cheap_tutor, subject=self.subject, level=TutorSubject.Level.SECONDARY_UPPER)
+        VerificationDocument.objects.create(
+            verification=cheap_verification,
+            doc_type=VerificationDocument.DocType.ID,
+            file="verification_docs/id.pdf",
+        )
+        VerificationDocument.objects.create(
+            verification=cheap_verification,
+            doc_type=VerificationDocument.DocType.CERTIFICATE,
+            file="verification_docs/certificate.pdf",
+        )
+        TutorAgreement.objects.create(
+            tutor=cheap_tutor,
+            status=TutorAgreement.Status.SIGNED,
+            agreed_to_terms=True,
+            signed_name="Cheap Tutor",
+            signed_file="tutor_agreements/signed.pdf",
+        )
+
+        self.client.force_authenticate(self.student)
+        response = self.client.get("/api/tutors/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["full_name"], "Cheap Tutor")
+
     def test_tutor_can_upload_signed_agreement(self):
         self.client.force_authenticate(self.tutor)
         response = self.client.post(

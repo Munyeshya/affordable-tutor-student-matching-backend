@@ -9,6 +9,8 @@
 - `/api/tutors/<id>/public/`
 - `/api/catalog/courses/`
 - `/api/catalog/courses/<id>/public/`
+- Public tutor search supports affordability filters like `min_rate`, `max_rate`, and `sort`
+- Public course search supports affordability filters like `min_price`, `max_price`, and `sort`
 
 ## Authenticated user routes
 
