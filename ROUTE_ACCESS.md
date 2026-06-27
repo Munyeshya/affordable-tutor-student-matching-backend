@@ -22,6 +22,7 @@
 
 - `/api/tutors/me/`
 - `/api/tutors/me/completion/`
+- `/api/tutors/dashboard/`
 - `/api/tutors/setup/checklist/`
 - `/api/tutors/documents/`
 - `/api/tutors/agreement/`

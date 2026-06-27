@@ -321,6 +321,20 @@ class TutorSetupAndSearchTests(TestCase):
         self.assertEqual(update_response.data["profile"]["headline"], "Updated tutor headline")
         self.assertEqual(update_response.data["profile"]["location"], "Kigali")
 
+    def test_tutor_dashboard_returns_work_summary(self):
+        self.client.force_authenticate(self.tutor)
+        response = self.client.get("/api/tutors/dashboard/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["marketplace_ready"])
+        self.assertEqual(response.data["completion_percentage"], 100)
+        self.assertEqual(response.data["course_stats"]["total_courses"], 1)
+        self.assertEqual(response.data["course_stats"]["draft_courses"], 0)
+        self.assertEqual(response.data["course_stats"]["published_courses"], 1)
+        self.assertEqual(response.data["lesson_stats"]["total_lessons"], 1)
+        self.assertEqual(response.data["lesson_stats"]["preview_lessons"], 0)
+        self.assertEqual(response.data["latest_courses"][0]["title"], "Algebra Mastery")
+
     def test_admin_rejection_requires_reason_and_writes_audit_trail(self):
         verification = TutorVerification.objects.get(tutor=self.tutor)
         self.client.force_authenticate(self.admin)

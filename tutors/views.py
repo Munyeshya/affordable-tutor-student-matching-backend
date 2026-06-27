@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole, IsTutor
-from catalog.models import TutorSubject
+from catalog.models import Course, Lesson, TutorSubject
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification, TutorVerificationDecision
 from tutors.serializers import (
     TutorProfileSerializer,
@@ -100,6 +100,50 @@ class TutorProfileCompletionView(APIView):
                 "completion_percentage": setup["completion_percentage"],
                 "missing_steps": setup["missing_steps"],
                 "steps": setup["steps"],
+            }
+        )
+
+
+class TutorDashboardView(APIView):
+    permission_classes = [IsTutor]
+
+    def _get_profile(self, user):
+        profile, _ = TutorProfile.objects.get_or_create(user=user, defaults={"full_name": user.get_full_name() or user.email})
+        return profile
+
+    def get(self, request):
+        setup = build_tutor_setup_status(request.user)
+        courses = Course.objects.filter(tutor=request.user)
+        lessons = Lesson.objects.filter(course__tutor=request.user)
+
+        course_stats = {
+            "total_courses": courses.count(),
+            "draft_courses": courses.filter(status=Course.Status.DRAFT).count(),
+            "pending_courses": courses.filter(status=Course.Status.PENDING_REVIEW).count(),
+            "published_courses": courses.filter(status=Course.Status.PUBLISHED).count(),
+            "rejected_courses": courses.filter(status=Course.Status.REJECTED).count(),
+        }
+
+        lesson_stats = {
+            "total_lessons": lessons.count(),
+            "preview_lessons": lessons.filter(is_preview=True).count(),
+        }
+
+        latest_courses = list(
+            courses.select_related("subject")
+            .order_by("-updated_at")[:5]
+            .values("id", "title", "status", "subject__name", "updated_at")
+        )
+
+        return Response(
+            {
+                "profile": TutorProfileSerializer(self._get_profile(request.user)).data,
+                "marketplace_ready": bool(setup["verification"] and setup["verification"].is_marketplace_ready()),
+                "completion_percentage": setup["completion_percentage"],
+                "missing_steps": setup["missing_steps"],
+                "course_stats": course_stats,
+                "lesson_stats": lesson_stats,
+                "latest_courses": latest_courses,
             }
         )
 
