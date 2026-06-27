@@ -18,6 +18,7 @@
 - Reviews
 - Notifications
 - Booking dispute creation and dispute history
+- Chat threads and booking messages
 
 ## Tutor setup routes
 

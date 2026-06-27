@@ -56,3 +56,25 @@ class ChatTests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Notification.objects.filter(user=self.tutor, kind="CHAT_MESSAGE").count(), 1)
+
+    def test_chat_threads_show_latest_message_and_unread_count(self):
+        self.client.force_authenticate(self.student)
+        self.client.post(
+            f"/api/chats/bookings/{self.booking.id}/messages/",
+            {"message": "First message"},
+            format="json",
+        )
+        self.client.force_authenticate(self.tutor)
+        self.client.post(
+            f"/api/chats/bookings/{self.booking.id}/messages/",
+            {"message": "Reply message"},
+            format="json",
+        )
+
+        self.client.force_authenticate(self.student)
+        response = self.client.get("/api/chats/threads/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["booking_id"], self.booking.id)
+        self.assertEqual(response.data[0]["last_message"], "Reply message")
+        self.assertEqual(response.data[0]["unread_count"], 1)

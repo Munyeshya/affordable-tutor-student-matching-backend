@@ -1,3 +1,4 @@
+from django.db.models import Count, Max, Q
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -60,3 +61,28 @@ class UnreadMessageCountView(APIView):
         count = Message.objects.filter(receiver=request.user, is_read=False).count()
         return Response({"unread_count": count})
 
+
+class ConversationListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        queryset = Message.objects.select_related("booking", "sender", "receiver").order_by("-created_at")
+        if user.role != User.Role.ADMIN:
+            queryset = queryset.filter(Q(sender=user) | Q(receiver=user))
+
+        thread_map = {}
+        for message in queryset:
+            booking_id = message.booking_id
+            if booking_id in thread_map:
+                continue
+            thread_map[booking_id] = {
+                "booking_id": booking_id,
+                "sender_name": message.sender.get_full_name() or message.sender.email,
+                "receiver_name": message.receiver.get_full_name() or message.receiver.email,
+                "last_message": message.message,
+                "last_message_at": message.created_at,
+                "unread_count": Message.objects.filter(booking_id=booking_id, receiver=user, is_read=False).count() if user.role != User.Role.ADMIN else Message.objects.filter(booking_id=booking_id, is_read=False).count(),
+            }
+
+        return Response(list(thread_map.values()))
