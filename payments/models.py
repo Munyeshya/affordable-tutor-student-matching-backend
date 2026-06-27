@@ -44,6 +44,21 @@ class Payout(TimeStampedModel):
     paid_at = models.DateTimeField(null=True, blank=True)
 
 
+class PayoutDecision(TimeStampedModel):
+    class Status(models.TextChoices):
+        APPROVED = "APPROVED", "Approved"
+        PAID = "PAID", "Paid"
+        REJECTED = "REJECTED", "Rejected"
+
+    payout = models.ForeignKey(Payout, on_delete=models.CASCADE, related_name="decisions")
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="payout_decisions")
+    status = models.CharField(max_length=20, choices=Status.choices)
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
 class CoursePurchase(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"

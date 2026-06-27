@@ -7,13 +7,15 @@ from rest_framework.views import APIView
 from accounts.models import User
 from accounts.permissions import IsAdminRole, IsMarketplaceReadyTutor, IsStudent, IsTutor
 from bookings.models import Booking
-from payments.models import CoursePurchase, LessonProgress, Payment, Payout
+from payments.models import CoursePurchase, LessonProgress, Payment, Payout, PayoutDecision
 from payments.serializers import (
     BookingPaymentCreateSerializer,
     CoursePurchaseCreateSerializer,
     CoursePurchaseSerializer,
     LessonProgressSerializer,
     LessonProgressUpdateSerializer,
+    PayoutDecisionActionSerializer,
+    PayoutDecisionSerializer,
     PaymentSerializer,
     PayoutRequestSerializer,
     PayoutSerializer,
@@ -83,13 +85,19 @@ class PayoutDecisionView(APIView):
 
     def patch(self, request, pk):
         payout = get_object_or_404(Payout, pk=pk)
-        status_value = request.data.get("status")
-        if status_value not in {Payout.Status.APPROVED, Payout.Status.PAID, Payout.Status.REJECTED}:
-            return Response({"detail": "Invalid payout status."}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = PayoutDecisionActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        status_value = serializer.validated_data["status"]
         payout.status = status_value
         if status_value == Payout.Status.PAID:
             payout.paid_at = timezone.now()
         payout.save(update_fields=["status", "paid_at", "updated_at"])
+        PayoutDecision.objects.create(
+            payout=payout,
+            admin=request.user,
+            status=status_value,
+            reason=serializer.validated_data["reason"],
+        )
         create_notification(
             user=payout.tutor,
             actor=request.user,
@@ -99,6 +107,18 @@ class PayoutDecisionView(APIView):
             kind=f"PAYOUT_{status_value}",
         )
         return Response(PayoutSerializer(payout).data, status=status.HTTP_200_OK)
+
+
+class PayoutDecisionHistoryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        payout = get_object_or_404(Payout.objects.select_related("tutor").prefetch_related("decisions__admin"), pk=pk)
+        if request.user.role == User.Role.TUTOR and payout.tutor_id != request.user.id:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if request.user.role != User.Role.TUTOR and request.user.role != User.Role.ADMIN:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        return Response(PayoutDecisionSerializer(payout.decisions.select_related("admin").all(), many=True).data)
 
 
 class CoursePurchaseListView(generics.ListAPIView):

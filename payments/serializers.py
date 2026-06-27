@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from bookings.models import Booking
 from catalog.models import Course
-from payments.models import CoursePurchase, LessonProgress, Payment, Payout
+from payments.models import CoursePurchase, LessonProgress, Payment, Payout, PayoutDecision
 from notifications.utils import create_notification
 from tutors.models import TutorVerification
 
@@ -177,12 +177,43 @@ class LessonProgressUpdateSerializer(serializers.Serializer):
 
 class PayoutSerializer(serializers.ModelSerializer):
     tutor_name = serializers.CharField(source="tutor.get_full_name", read_only=True)
+    decisions = serializers.SerializerMethodField()
 
     class Meta:
         model = Payout
-        fields = ("id", "tutor", "tutor_name", "amount", "status", "paid_at", "created_at", "updated_at")
-        read_only_fields = ("id", "tutor", "tutor_name", "status", "paid_at", "created_at", "updated_at")
+        fields = ("id", "tutor", "tutor_name", "amount", "status", "paid_at", "decisions", "created_at", "updated_at")
+        read_only_fields = ("id", "tutor", "tutor_name", "status", "paid_at", "decisions", "created_at", "updated_at")
+
+    def get_decisions(self, obj):
+        return PayoutDecisionSerializer(obj.decisions.select_related("admin").all(), many=True).data
 
 
 class PayoutRequestSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class PayoutDecisionSerializer(serializers.ModelSerializer):
+    admin_email = serializers.EmailField(source="admin.email", read_only=True)
+    admin_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PayoutDecision
+        fields = ("id", "status", "reason", "admin", "admin_email", "admin_name", "created_at")
+        read_only_fields = fields
+
+    def get_admin_name(self, obj):
+        return obj.admin.get_full_name() or obj.admin.username
+
+
+class PayoutDecisionActionSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=PayoutDecision.Status.choices)
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="", write_only=True)
+
+    def validate(self, attrs):
+        reason = (attrs.get("reason") or attrs.get("notes") or "").strip()
+        if attrs["status"] == PayoutDecision.Status.REJECTED and not reason:
+            raise serializers.ValidationError({"reason": "A rejection reason is required."})
+        attrs["reason"] = reason
+        attrs.pop("notes", None)
+        return attrs

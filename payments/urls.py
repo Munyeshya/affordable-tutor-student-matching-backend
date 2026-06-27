@@ -6,6 +6,7 @@ from payments.views import (
     CoursePurchaseListView,
     PaymentListView,
     PayoutDecisionView,
+    PayoutDecisionHistoryView,
     PayoutListView,
     PayoutRequestView,
     StudentLessonProgressListView,
@@ -22,4 +23,5 @@ urlpatterns = [
     path("payouts/", PayoutListView.as_view(), name="payout-list"),
     path("payouts/request/", PayoutRequestView.as_view(), name="payout-request"),
     path("payouts/<int:pk>/decide/", PayoutDecisionView.as_view(), name="payout-decision"),
+    path("payouts/<int:pk>/history/", PayoutDecisionHistoryView.as_view(), name="payout-decision-history"),
 ]

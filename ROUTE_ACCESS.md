@@ -51,5 +51,6 @@
 - course moderation decisions
 - course moderation
 - payout decisions
+- payout decision history
 - analytics
 - `/api/analytics/dashboard/`
