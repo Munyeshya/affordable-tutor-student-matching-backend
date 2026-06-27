@@ -17,6 +17,7 @@
 - Lesson progress
 - Reviews
 - Notifications
+- Notification mark-all-read
 - Booking dispute creation and dispute history
 - Chat threads and booking messages
 

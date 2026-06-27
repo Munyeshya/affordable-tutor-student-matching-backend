@@ -13,7 +13,11 @@ class NotificationListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user).select_related("actor").order_by("-created_at")
+        queryset = Notification.objects.filter(user=self.request.user).select_related("actor").order_by("-created_at")
+        unread = self.request.query_params.get("unread")
+        if unread and unread.lower() in {"1", "true", "yes"}:
+            queryset = queryset.filter(is_read=False)
+        return queryset
 
 
 class NotificationMarkReadView(APIView):
@@ -32,3 +36,12 @@ class NotificationUnreadCountView(APIView):
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({"unread_count": count})
 
+
+class NotificationMarkAllReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        notifications = Notification.objects.filter(user=request.user, is_read=False)
+        updated_count = notifications.count()
+        notifications.update(is_read=True, read_at=timezone.now(), updated_at=timezone.now())
+        return Response({"updated_count": updated_count})
