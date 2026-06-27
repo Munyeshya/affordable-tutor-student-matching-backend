@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from catalog.models import TutorSubject
-from tutors.models import TutorProfile, TutorVerification, VerificationDocument
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
 class VerificationDocumentSerializer(serializers.ModelSerializer):
@@ -127,3 +127,33 @@ class TutorVerificationSerializer(serializers.ModelSerializer):
 class TutorVerificationActionSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=TutorVerification.Status.choices)
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class TutorAgreementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TutorAgreement
+        fields = (
+            "id",
+            "tutor",
+            "status",
+            "template_version",
+            "agreed_to_terms",
+            "signed_name",
+            "signed_file",
+            "signed_at",
+            "notes",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "tutor", "status", "template_version", "signed_at", "created_at", "updated_at")
+
+
+class TutorAgreementUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TutorAgreement
+        fields = ("signed_name", "signed_file", "agreed_to_terms")
+
+    def validate_agreed_to_terms(self, value):
+        if value is not True:
+            raise serializers.ValidationError("You must agree to the terms before uploading the signed agreement.")
+        return value

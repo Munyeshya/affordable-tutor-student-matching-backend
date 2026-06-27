@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -5,14 +6,35 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole, IsTutor
-from tutors.models import TutorProfile, TutorVerification
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification
 from tutors.serializers import (
     TutorProfileSerializer,
+    TutorAgreementSerializer,
+    TutorAgreementUploadSerializer,
     VerificationDocumentCreateSerializer,
     TutorVerificationActionSerializer,
     TutorVerificationSerializer,
     PublicTutorSerializer,
 )
+
+TUTOR_AGREEMENT_TEMPLATE = """Affordable Tutor Agreement
+
+This agreement is a template and should be reviewed by a qualified legal professional before production use.
+
+By signing this agreement, I confirm that:
+
+1. I will provide honest, accurate information and valid qualification documents.
+2. I will act with integrity toward students, parents, and the platform.
+3. I will not misrepresent my qualifications, experience, or identity.
+4. I will deliver tutoring services professionally and respectfully.
+5. I will follow all platform rules, policies, and applicable laws.
+6. I understand that misconduct, fraud, harassment, or repeated breaches may result in suspension, termination, removal from the platform, and reporting to the relevant authorities where appropriate.
+7. I understand that the platform may pursue available legal remedies for material breach, fraud, or other unlawful conduct, subject to applicable law.
+
+Tutor name:
+Signature:
+Date:
+"""
 
 
 class TutorProfileMeView(APIView):
@@ -68,6 +90,35 @@ class TutorVerificationDocumentView(APIView):
         from tutors.serializers import VerificationDocumentSerializer
 
         return Response(VerificationDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
+
+
+class TutorAgreementView(APIView):
+    permission_classes = [IsTutor]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _get_agreement(self, user):
+        agreement, _ = TutorAgreement.objects.get_or_create(tutor=user)
+        return agreement
+
+    def get(self, request):
+        agreement = self._get_agreement(request.user)
+        return Response(TutorAgreementSerializer(agreement).data)
+
+    def post(self, request):
+        agreement = self._get_agreement(request.user)
+        serializer = TutorAgreementUploadSerializer(instance=agreement, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        agreement = serializer.save(status=TutorAgreement.Status.SIGNED, signed_at=timezone.now())
+        return Response(TutorAgreementSerializer(agreement).data, status=status.HTTP_201_CREATED)
+
+
+class TutorAgreementDownloadView(APIView):
+    permission_classes = [IsTutor]
+
+    def get(self, request):
+        response = HttpResponse(TUTOR_AGREEMENT_TEMPLATE, content_type="text/plain")
+        response["Content-Disposition"] = 'attachment; filename="tutor-agreement-template.txt"'
+        return response
 
 
 class PendingTutorVerificationListView(generics.ListAPIView):
@@ -129,6 +180,18 @@ class TutorVerificationDecisionView(APIView):
                 {
                     "detail": "Tutor must upload both a national ID and a qualification certificate before approval.",
                     "missing_documents": verification.missing_required_document_types(),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        agreement = TutorAgreement.objects.filter(tutor=verification.tutor).first()
+        if serializer.validated_data["status"] == TutorVerification.Status.APPROVED and (
+            not agreement or agreement.status != TutorAgreement.Status.SIGNED or not agreement.agreed_to_terms or not agreement.signed_file
+        ):
+            return Response(
+                {
+                    "detail": "Tutor must sign and upload the agreement before approval.",
+                    "agreement_required": True,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )

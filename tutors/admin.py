@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TutorProfile, TutorVerification, VerificationDocument
+from .models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
 
@@ -27,3 +27,10 @@ class TutorVerificationAdmin(admin.ModelAdmin):
 class VerificationDocumentAdmin(admin.ModelAdmin):
     list_display = ("verification", "doc_type", "created_at")
     list_filter = ("doc_type",)
+
+
+@admin.register(TutorAgreement)
+class TutorAgreementAdmin(admin.ModelAdmin):
+    list_display = ("tutor", "status", "agreed_to_terms", "signed_name", "signed_at")
+    list_filter = ("status", "agreed_to_terms")
+    search_fields = ("tutor__email", "tutor__username", "signed_name")

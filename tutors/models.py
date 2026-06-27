@@ -54,3 +54,18 @@ class VerificationDocument(TimeStampedModel):
     verification = models.ForeignKey(TutorVerification, on_delete=models.CASCADE, related_name="documents")
     doc_type = models.CharField(max_length=30, choices=DocType.choices, default=DocType.OTHER)
     file = models.FileField(upload_to="verification_docs/%Y/%m/")
+
+
+class TutorAgreement(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        SIGNED = "SIGNED", "Signed"
+
+    tutor = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tutor_agreement")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    template_version = models.CharField(max_length=20, default="v1")
+    agreed_to_terms = models.BooleanField(default=False)
+    signed_name = models.CharField(max_length=120, blank=True, default="")
+    signed_file = models.FileField(upload_to="tutor_agreements/%Y/%m/", null=True, blank=True)
+    signed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, default="")
