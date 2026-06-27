@@ -1,6 +1,7 @@
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Avg, Count
 
 from accounts.models import User
 from accounts.permissions import IsStudent, IsTutor
@@ -106,3 +107,36 @@ class AssessmentResultConfirmationListView(generics.ListAPIView):
             return queryset.filter(lesson__course__tutor=user).order_by("-created_at")
         return queryset.order_by("-created_at")
 
+
+class LearningImpactSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role not in {User.Role.TUTOR, User.Role.ADMIN}:
+            return Response({"detail": "Only tutors and admins can view impact summaries."}, status=403)
+
+        queryset = AssessmentResultConfirmation.objects.select_related("lesson", "lesson__course", "student", "lesson__course__tutor")
+        if user.role == User.Role.TUTOR:
+            queryset = queryset.filter(lesson__course__tutor=user)
+
+        confirmed_qs = queryset.filter(student_confirmation_status=AssessmentResultConfirmation.Status.CONFIRMED)
+
+        payload = {
+            "total_confirmations": queryset.count(),
+            "pending_confirmations": queryset.filter(student_confirmation_status=AssessmentResultConfirmation.Status.PENDING).count(),
+            "confirmed_confirmations": confirmed_qs.count(),
+            "rejected_confirmations": queryset.filter(student_confirmation_status=AssessmentResultConfirmation.Status.REJECTED).count(),
+            "average_improvement": confirmed_qs.aggregate(avg=Avg("improvement_percentage"))["avg"] or 0,
+            "top_lessons": list(
+                confirmed_qs.values("lesson__id", "lesson__title", "lesson__course__title")
+                .annotate(average_improvement=Avg("improvement_percentage"), confirmations=Count("id"))
+                .order_by("-average_improvement", "-confirmations")[:10]
+            ),
+            "top_students": list(
+                confirmed_qs.values("student__id", "student__email")
+                .annotate(average_improvement=Avg("improvement_percentage"), confirmations=Count("id"))
+                .order_by("-average_improvement", "-confirmations")[:10]
+            ),
+        }
+        return Response(payload)

@@ -7,6 +7,7 @@ from assessments.views import (
     LessonAssessmentListView,
     LessonAssessmentQuestionCreateView,
     LessonAssessmentQuestionListView,
+    LearningImpactSummaryView,
     StudentAssessmentAttemptCreateView,
     StudentAssessmentAttemptListView,
 )
@@ -20,5 +21,5 @@ urlpatterns = [
     path("attempts/create/", StudentAssessmentAttemptCreateView.as_view(), name="assessment-attempt-create"),
     path("confirmations/", AssessmentResultConfirmationListView.as_view(), name="assessment-confirmation-list"),
     path("confirmations/create/", AssessmentResultConfirmationCreateView.as_view(), name="assessment-confirmation-create"),
+    path("impact/", LearningImpactSummaryView.as_view(), name="learning-impact-summary"),
 ]
-

@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from assessments.models import LessonAssessment, LessonAssessmentQuestion, StudentAssessmentAttempt
+from assessments.models import AssessmentResultConfirmation, LessonAssessment, LessonAssessmentQuestion, StudentAssessmentAttempt
 from catalog.models import Course, Lesson, Subject, TutorSubject
 from notifications.models import Notification
 from payments.models import CoursePurchase
@@ -96,3 +96,41 @@ class AssessmentTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Notification.objects.filter(user=self.tutor, kind="ASSESSMENT_CONFIRMATION").count(), 1)
+
+    def test_tutor_can_view_learning_impact_summary(self):
+        self.client.post(
+            "/api/assessments/attempts/create/",
+            {"assessment_id": self.pre.id, "answers": [{"question_id": self.pre_q.id, "selected_answer": "A"}]},
+            format="json",
+        )
+        self.client.post(
+            "/api/assessments/attempts/create/",
+            {"assessment_id": self.post.id, "answers": [{"question_id": self.post_q.id, "selected_answer": "A"}]},
+            format="json",
+        )
+        self.client.post(
+            "/api/assessments/confirmations/create/",
+            {
+                "lesson_id": self.lesson.id,
+                "pre_test_attempt_id": StudentAssessmentAttempt.objects.get(assessment=self.pre).id,
+                "post_test_attempt_id": StudentAssessmentAttempt.objects.get(assessment=self.post).id,
+                "student_confirmation_status": AssessmentResultConfirmation.Status.CONFIRMED,
+                "student_comment": "Confirmed",
+            },
+            format="json",
+        )
+
+        self.client.force_authenticate(self.tutor)
+        response = self.client.get("/api/assessments/impact/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["confirmed_confirmations"], 1)
+        self.assertEqual(response.data["total_confirmations"], 1)
+        self.assertEqual(response.data["average_improvement"], 0)
+        self.assertEqual(response.data["top_lessons"][0]["lesson__title"], "Cells")
+
+    def test_students_cannot_view_learning_impact_summary(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get("/api/assessments/impact/")
+
+        self.assertEqual(response.status_code, 403)

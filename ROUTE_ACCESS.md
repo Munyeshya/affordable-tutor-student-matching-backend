@@ -54,5 +54,6 @@
 - payout decisions
 - payout decision history
 - dispute decisions
+- learning impact summary
 - analytics
 - `/api/analytics/dashboard/`
