@@ -52,7 +52,7 @@ class LessonSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = ("id", "course", "created_at", "updated_at")
 
 
 class LessonSummarySerializer(serializers.ModelSerializer):
@@ -109,7 +109,18 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
         fields = ("id", "title", "description", "subject", "academic_level", "price", "thumbnail", "status")
-        read_only_fields = ("id",)
+        read_only_fields = ("id", "status")
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        subject = attrs.get("subject") or getattr(self.instance, "subject", None)
+
+        if user and user.is_authenticated and user.role == "TUTOR" and subject:
+            if not TutorSubject.objects.filter(tutor=user, subject=subject).exists():
+                raise serializers.ValidationError({"subject": "You can only create courses for subjects you teach."})
+
+        return attrs
 
 
 class CourseModerationSerializer(serializers.Serializer):

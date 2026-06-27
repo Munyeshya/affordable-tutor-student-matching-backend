@@ -31,14 +31,17 @@
 
 ## Marketplace-ready tutor routes
 
+- `/api/catalog/courses/<id>/submit/`
+- `/api/payments/payouts/request/`
+- booking accept/reject/complete actions
+
+## Tutor draft management routes
+
 - `/api/catalog/my-courses/`
 - `/api/catalog/courses/create/`
 - `/api/catalog/courses/<id>/`
-- `/api/catalog/courses/<id>/submit/`
 - `/api/catalog/courses/<course_id>/lessons/`
 - `/api/catalog/lessons/<id>/`
-- `/api/payments/payouts/request/`
-- booking accept/reject/complete actions
 
 ## Admin routes
 

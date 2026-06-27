@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsAdminRole, IsMarketplaceReadyTutor, IsTutor
+from accounts.permissions import IsAdminRole, IsTutor
 from catalog.models import Course, Lesson, Subject, TutorSubject
 from catalog.serializers import (
     CourseCreateUpdateSerializer,
@@ -84,7 +84,7 @@ class CourseListView(generics.ListAPIView):
 
 class TutorCourseListView(generics.ListAPIView):
     serializer_class = CourseSerializer
-    permission_classes = [IsMarketplaceReadyTutor]
+    permission_classes = [IsTutor]
 
     def get_queryset(self):
         return Course.objects.filter(tutor=self.request.user).select_related("tutor", "subject").prefetch_related("lessons").order_by("-created_at")
@@ -92,7 +92,7 @@ class TutorCourseListView(generics.ListAPIView):
 
 class CourseCreateView(generics.CreateAPIView):
     serializer_class = CourseCreateUpdateSerializer
-    permission_classes = [IsMarketplaceReadyTutor]
+    permission_classes = [IsTutor]
 
     def perform_create(self, serializer):
         serializer.save(tutor=self.request.user)
@@ -100,7 +100,7 @@ class CourseCreateView(generics.CreateAPIView):
 
 class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CourseCreateUpdateSerializer
-    permission_classes = [IsMarketplaceReadyTutor]
+    permission_classes = [IsTutor]
     queryset = Course.objects.all()
 
     def get_queryset(self):
@@ -108,7 +108,7 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class TutorCourseSubmitForReviewView(APIView):
-    permission_classes = [IsMarketplaceReadyTutor]
+    permission_classes = [IsTutor]
 
     def patch(self, request, pk):
         course = Course.objects.get(pk=pk, tutor=request.user)
@@ -147,7 +147,7 @@ class PublicCourseDetailView(generics.RetrieveAPIView):
 
 class LessonListCreateView(generics.ListCreateAPIView):
     serializer_class = LessonSerializer
-    permission_classes = [IsMarketplaceReadyTutor]
+    permission_classes = [IsTutor]
 
     def get_queryset(self):
         course_id = self.kwargs["course_id"]
@@ -161,7 +161,7 @@ class LessonListCreateView(generics.ListCreateAPIView):
 
 class LessonDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = LessonSerializer
-    permission_classes = [IsMarketplaceReadyTutor]
+    permission_classes = [IsTutor]
 
     def get_queryset(self):
         return Lesson.objects.filter(course__tutor=self.request.user)
