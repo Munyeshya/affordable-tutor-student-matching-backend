@@ -6,6 +6,7 @@ from tutors.views import (
     PendingTutorVerificationListView,
     PublicTutorListView,
     TutorProfileMeView,
+    TutorSetupChecklistView,
     TutorVerificationDocumentView,
     TutorVerificationDecisionView,
 )
@@ -13,6 +14,7 @@ from tutors.views import (
 urlpatterns = [
     path("", PublicTutorListView.as_view(), name="public-tutor-list"),
     path("me/", TutorProfileMeView.as_view(), name="tutor-me"),
+    path("setup/checklist/", TutorSetupChecklistView.as_view(), name="tutor-setup-checklist"),
     path("agreement/", TutorAgreementView.as_view(), name="tutor-agreement"),
     path("agreement/download/", TutorAgreementDownloadView.as_view(), name="tutor-agreement-download"),
     path("documents/", TutorVerificationDocumentView.as_view(), name="tutor-documents"),

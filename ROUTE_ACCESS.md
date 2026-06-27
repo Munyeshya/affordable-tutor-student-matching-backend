@@ -21,6 +21,7 @@
 ## Tutor setup routes
 
 - `/api/tutors/me/`
+- `/api/tutors/setup/checklist/`
 - `/api/tutors/documents/`
 - `/api/tutors/agreement/`
 - `/api/tutors/agreement/download/`
@@ -44,3 +45,4 @@
 - course moderation
 - payout decisions
 - analytics
+- `/api/analytics/dashboard/`

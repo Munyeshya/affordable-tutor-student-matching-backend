@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -123,6 +124,60 @@ class TutorAgreementDownloadView(APIView):
         return response
 
 
+class TutorSetupChecklistView(APIView):
+    permission_classes = [IsTutor]
+
+    def get(self, request):
+        profile = TutorProfile.objects.filter(user=request.user).first()
+        verification = TutorVerification.objects.filter(tutor=request.user).first()
+        agreement = TutorAgreement.objects.filter(tutor=request.user).first()
+        subject_count = TutorSubject.objects.filter(tutor=request.user).count()
+        documents_count = verification.documents.count() if verification else 0
+
+        steps = [
+            {
+                "key": "profile",
+                "label": "Create tutor profile",
+                "completed": bool(profile and profile.full_name),
+            },
+            {
+                "key": "subjects",
+                "label": "Add subjects and levels",
+                "completed": subject_count > 0,
+            },
+            {
+                "key": "documents",
+                "label": "Upload ID and certificate",
+                "completed": bool(verification and verification.has_required_documents()),
+            },
+            {
+                "key": "agreement",
+                "label": "Sign agreement",
+                "completed": bool(agreement and agreement.status == TutorAgreement.Status.SIGNED and agreement.agreed_to_terms and agreement.signed_file),
+            },
+            {
+                "key": "approval",
+                "label": "Admin approval",
+                "completed": bool(verification and verification.status == TutorVerification.Status.APPROVED),
+            },
+        ]
+
+        missing_steps = [step["key"] for step in steps if not step["completed"]]
+
+        return Response(
+            {
+                "marketplace_ready": bool(verification and verification.is_marketplace_ready()),
+                "verification_status": getattr(verification, "status", None),
+                "profile_exists": bool(profile),
+                "subjects_count": subject_count,
+                "documents_count": documents_count,
+                "agreement_signed": bool(agreement and agreement.status == TutorAgreement.Status.SIGNED),
+                "steps": steps,
+                "missing_steps": missing_steps,
+            }
+        )
+
+
 class PendingTutorVerificationListView(generics.ListAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = TutorVerificationSerializer
@@ -149,15 +204,40 @@ class PublicTutorListView(generics.ListAPIView):
         mode = self.request.query_params.get("mode")
         min_rate = self.request.query_params.get("min_rate")
         max_rate = self.request.query_params.get("max_rate")
+        level = self.request.query_params.get("level")
+        lesson = self.request.query_params.get("lesson")
+        topic = self.request.query_params.get("topic")
+
+        text_query = self.request.query_params.get("q") or self.request.query_params.get("name")
+        if text_query:
+            queryset = queryset.filter(
+                Q(full_name__icontains=text_query)
+                | Q(headline__icontains=text_query)
+                | Q(bio__icontains=text_query)
+                | Q(user__username__icontains=text_query)
+                | Q(user__email__icontains=text_query)
+                | Q(user__courses__title__icontains=text_query)
+                | Q(user__courses__description__icontains=text_query)
+                | Q(user__courses__lessons__title__icontains=text_query)
+                | Q(user__courses__lessons__topic__icontains=text_query)
+                | Q(user__tutor_subjects__subject__name__icontains=text_query)
+                | Q(user__tutor_subjects__level__icontains=text_query)
+            )
 
         if subject:
-            queryset = queryset.filter(user__tutor_subjects__subject__name__icontains=subject)
+            queryset = queryset.filter(Q(user__tutor_subjects__subject__name__icontains=subject) | Q(user__courses__subject__name__icontains=subject))
         if location:
             queryset = queryset.filter(location__icontains=location)
         if mode == "ONLINE":
             queryset = queryset.filter(teaches_online=True)
         if mode == "IN_PERSON":
             queryset = queryset.filter(teaches_in_person=True)
+        if level:
+            queryset = queryset.filter(user__tutor_subjects__level=level)
+        if lesson:
+            queryset = queryset.filter(Q(user__courses__lessons__title__icontains=lesson) | Q(user__courses__lessons__topic__icontains=lesson))
+        if topic:
+            queryset = queryset.filter(Q(user__courses__lessons__topic__icontains=topic) | Q(user__courses__title__icontains=topic))
         if min_rate:
             queryset = queryset.filter(hourly_rate__gte=min_rate)
         if max_rate:

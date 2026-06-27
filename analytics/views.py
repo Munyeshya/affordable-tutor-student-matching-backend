@@ -13,7 +13,8 @@ from catalog.models import Course, Lesson
 from payments.models import CoursePurchase, Payment
 from reviews.models import LessonReview, Review
 from students.models import ParentProfile, StudentProfile
-from tutors.models import TutorProfile, TutorVerification
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification
+from tutors.utils import get_marketplace_ready_tutor_ids
 
 
 class AdminDashboardView(APIView):
@@ -36,6 +37,18 @@ class AdminDashboardView(APIView):
             "confirmed_bookings": Booking.objects.filter(status=Booking.Status.CONFIRMED).count(),
             "completed_bookings": Booking.objects.filter(status=Booking.Status.COMPLETED).count(),
             "cancelled_bookings": Booking.objects.filter(status=Booking.Status.CANCELLED).count(),
+        }
+
+        tutor_pipeline = {
+            "total_tutor_profiles": TutorProfile.objects.count(),
+            "pending_verifications": TutorVerification.objects.filter(status=TutorVerification.Status.PENDING).count(),
+            "approved_verifications": TutorVerification.objects.filter(status=TutorVerification.Status.APPROVED).count(),
+            "rejected_verifications": TutorVerification.objects.filter(status=TutorVerification.Status.REJECTED).count(),
+            "marketplace_ready_tutors": len(get_marketplace_ready_tutor_ids()),
+            "tutors_with_subjects": TutorProfile.objects.filter(user__tutor_subjects__isnull=False).distinct().count(),
+            "tutors_with_signed_agreements": TutorAgreement.objects.filter(
+                status=TutorAgreement.Status.SIGNED, agreed_to_terms=True, signed_file__isnull=False
+            ).count(),
         }
 
         educational_impact_qs = AssessmentResultConfirmation.objects.filter(student_confirmation_status=AssessmentResultConfirmation.Status.CONFIRMED)
@@ -111,6 +124,7 @@ class AdminDashboardView(APIView):
         payload = {
             "users": users,
             "tutoring": tutoring,
+            "tutor_pipeline": tutor_pipeline,
             "educational_impact": educational_impact,
             "courses": courses,
             "revenue": revenue,
