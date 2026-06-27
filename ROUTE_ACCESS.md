@@ -17,6 +17,7 @@
 - Lesson progress
 - Reviews
 - Notifications
+- Booking dispute creation and dispute history
 
 ## Tutor setup routes
 
@@ -52,5 +53,6 @@
 - course moderation
 - payout decisions
 - payout decision history
+- dispute decisions
 - analytics
 - `/api/analytics/dashboard/`

@@ -29,3 +29,37 @@ class BookingEvent(TimeStampedModel):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="booking_events")
     action = models.CharField(max_length=30)
     message = models.TextField(blank=True, default="")
+
+
+class Dispute(TimeStampedModel):
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Open"
+        UNDER_REVIEW = "UNDER_REVIEW", "Under Review"
+        RESOLVED = "RESOLVED", "Resolved"
+        REJECTED = "REJECTED", "Rejected"
+
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="disputes")
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="disputes_reported")
+    reported_against = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="disputes_received")
+    reason = models.TextField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN, db_index=True)
+    admin_comment = models.TextField(blank=True, default="")
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class DisputeDecision(TimeStampedModel):
+    class Status(models.TextChoices):
+        UNDER_REVIEW = "UNDER_REVIEW", "Under Review"
+        RESOLVED = "RESOLVED", "Resolved"
+        REJECTED = "REJECTED", "Rejected"
+
+    dispute = models.ForeignKey(Dispute, on_delete=models.CASCADE, related_name="decisions")
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="dispute_decisions")
+    status = models.CharField(max_length=20, choices=Status.choices)
+    comment = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]

@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 from availability.models import AvailabilitySlot
-from bookings.models import Booking, BookingEvent
+from bookings.models import Booking, BookingEvent, Dispute, DisputeDecision
 from catalog.models import Subject
 from catalog.models import TutorSubject
 from notifications.utils import create_notification
@@ -174,3 +174,80 @@ class BookingCreateSerializer(serializers.Serializer):
 class BookingActionSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=("ACCEPT", "REJECT", "CANCEL", "COMPLETE"))
     message = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class DisputeDecisionSerializer(serializers.ModelSerializer):
+    admin_email = serializers.EmailField(source="admin.email", read_only=True)
+    admin_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DisputeDecision
+        fields = ("id", "status", "comment", "admin", "admin_email", "admin_name", "created_at")
+        read_only_fields = fields
+
+    def get_admin_name(self, obj):
+        return obj.admin.get_full_name() or obj.admin.username
+
+
+class DisputeSerializer(serializers.ModelSerializer):
+    reported_by_email = serializers.EmailField(source="reported_by.email", read_only=True)
+    reported_against_email = serializers.EmailField(source="reported_against.email", read_only=True)
+    booking_id = serializers.IntegerField(source="booking.id", read_only=True)
+    decisions = DisputeDecisionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Dispute
+        fields = (
+            "id",
+            "booking",
+            "booking_id",
+            "reported_by",
+            "reported_by_email",
+            "reported_against",
+            "reported_against_email",
+            "reason",
+            "status",
+            "admin_comment",
+            "resolved_at",
+            "decisions",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+class DisputeCreateSerializer(serializers.Serializer):
+    booking_id = serializers.IntegerField()
+    reason = serializers.CharField()
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        try:
+            booking = Booking.objects.select_related("student", "tutor").get(pk=attrs["booking_id"])
+        except Booking.DoesNotExist:
+            raise serializers.ValidationError({"booking_id": "Booking not found."})
+
+        if request.user.id not in {booking.student_id, booking.tutor_id}:
+            raise serializers.ValidationError({"booking_id": "You can only report your own bookings."})
+
+        if not attrs["reason"].strip():
+            raise serializers.ValidationError({"reason": "Please provide a reason for the dispute."})
+
+        attrs["booking"] = booking
+        attrs["reported_against"] = booking.tutor if request.user.id == booking.student_id else booking.student
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        dispute = Dispute.objects.create(
+            booking=validated_data["booking"],
+            reported_by=request.user,
+            reported_against=validated_data["reported_against"],
+            reason=validated_data["reason"].strip(),
+        )
+        return dispute
+
+
+class DisputeActionSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=DisputeDecision.Status.choices)
+    comment = serializers.CharField(required=False, allow_blank=True, default="")

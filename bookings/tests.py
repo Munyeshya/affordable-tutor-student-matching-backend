@@ -7,10 +7,12 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from availability.models import AvailabilitySlot
+from bookings.models import Booking
 from catalog.models import Subject, TutorSubject
 from notifications.models import Notification
 from students.models import StudentProfile
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
+from bookings.models import Dispute, DisputeDecision
 
 
 class BookingTests(TestCase):
@@ -62,3 +64,54 @@ class BookingTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Notification.objects.filter(user=self.tutor, kind="BOOKING_CREATED").count(), 1)
+
+    def test_student_can_report_a_dispute_and_admin_can_resolve_it(self):
+        booking = Booking.objects.create(
+            student=self.student,
+            tutor=self.tutor,
+            subject=self.subject,
+            start_datetime=self.start,
+            end_datetime=self.end,
+            mode=AvailabilitySlot.Mode.ONLINE,
+            status=Booking.Status.CONFIRMED,
+            hourly_rate=10,
+            total_amount=10,
+        )
+        admin = User.objects.create_user(
+            username="booking-admin",
+            email="booking-admin@example.com",
+            password="pass12345",
+            role=User.Role.ADMIN,
+            is_staff=True,
+            is_superuser=True,
+        )
+
+        self.client.force_authenticate(self.student)
+        create_response = self.client.post(
+            "/api/bookings/disputes/create/",
+            {"booking_id": booking.id, "reason": "Tutor did not show up."},
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201, create_response.data)
+        dispute = Dispute.objects.get(booking=booking)
+        self.assertEqual(dispute.reported_by, self.student)
+        self.assertEqual(dispute.reported_against, self.tutor)
+        self.assertEqual(Notification.objects.filter(user=self.tutor, kind="DISPUTE_REPORTED").count(), 1)
+
+        self.client.force_authenticate(self.student)
+        list_response = self.client.get("/api/bookings/disputes/")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.data[0]["reason"], "Tutor did not show up.")
+
+        self.client.force_authenticate(admin)
+        missing_comment_response = self.client.patch(
+            f"/api/bookings/disputes/{dispute.id}/decide/",
+            {"status": DisputeDecision.Status.RESOLVED},
+            format="json",
+        )
+        self.assertEqual(missing_comment_response.status_code, 200)
+        dispute.refresh_from_db()
+        self.assertEqual(dispute.status, Dispute.Status.RESOLVED)
+        self.assertTrue(dispute.resolved_at)
+        self.assertEqual(DisputeDecision.objects.filter(dispute=dispute, status=DisputeDecision.Status.RESOLVED).count(), 1)
