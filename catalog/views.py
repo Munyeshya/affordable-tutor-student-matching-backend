@@ -5,10 +5,11 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.permissions import IsAdminRole, IsTutor
-from catalog.models import Course, Lesson, Subject, TutorSubject
+from catalog.models import Course, CourseModerationDecision, Lesson, Subject, TutorSubject
 from catalog.serializers import (
     CourseCreateUpdateSerializer,
     CourseModerationSerializer,
+    CourseModerationDecisionSerializer,
     CourseSerializer,
     PublicCourseSerializer,
     LessonSerializer,
@@ -123,14 +124,28 @@ class AdminCourseModerationView(APIView):
     permission_classes = [IsAdminRole]
 
     def patch(self, request, pk):
-        course = Course.objects.select_related("tutor", "subject").prefetch_related("lessons").get(pk=pk)
+        course = Course.objects.select_related("tutor", "subject").prefetch_related("lessons", "moderation_decisions__admin").get(pk=pk)
         serializer = CourseModerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        reason = serializer.validated_data["reason"]
 
         course.status = serializer.validated_data["status"]
         course.save(update_fields=["status", "updated_at"])
 
-        return Response(CourseSerializer(course, context={"request": request}).data, status=200)
+        CourseModerationDecision.objects.create(
+            course=course,
+            admin=request.user,
+            status=course.status,
+            reason=reason,
+        )
+
+        return Response(
+            {
+                **CourseSerializer(course, context={"request": request}).data,
+                "decisions": CourseModerationDecisionSerializer(course.moderation_decisions.select_related("admin").all(), many=True).data,
+            },
+            status=200,
+        )
 
 
 class PublicCourseDetailView(generics.RetrieveAPIView):

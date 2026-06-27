@@ -45,6 +45,20 @@ class Course(TimeStampedModel):
         return self.title
 
 
+class CourseModerationDecision(TimeStampedModel):
+    class Status(models.TextChoices):
+        PUBLISHED = "PUBLISHED", "Published"
+        REJECTED = "REJECTED", "Rejected"
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="moderation_decisions")
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="course_moderation_decisions")
+    status = models.CharField(max_length=20, choices=Status.choices)
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
 class Lesson(TimeStampedModel):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="lessons")
     title = models.CharField(max_length=200, db_index=True)

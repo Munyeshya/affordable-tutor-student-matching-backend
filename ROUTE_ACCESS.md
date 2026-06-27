@@ -47,6 +47,7 @@
 
 - tutor verification decisions
 - tutor verification decision history
+- course moderation decisions
 - course moderation
 - payout decisions
 - analytics

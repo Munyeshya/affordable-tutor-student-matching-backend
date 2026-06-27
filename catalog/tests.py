@@ -2,7 +2,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from catalog.models import Course, Lesson, Subject, TutorSubject
+from catalog.models import Course, CourseModerationDecision, Lesson, Subject, TutorSubject
 from students.models import StudentProfile
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
@@ -126,3 +126,45 @@ class CatalogAccessTests(TestCase):
         titles = [item["title"] for item in response.data]
         self.assertIn("Approved Course", titles)
         self.assertNotIn("Hidden Course", titles)
+
+    def test_admin_rejection_requires_reason_and_writes_course_audit_trail(self):
+        admin = User.objects.create_user(
+            username="course-admin",
+            email="course-admin@example.com",
+            password="pass12345",
+            role=User.Role.ADMIN,
+            is_staff=True,
+            is_superuser=True,
+        )
+        course = Course.objects.create(
+            tutor=self.tutor,
+            title="Moderation Course",
+            description="Needs review",
+            subject=self.subject,
+            academic_level="SECONDARY_UPPER",
+            price=50,
+            status=Course.Status.PENDING_REVIEW,
+        )
+
+        self.client.force_authenticate(admin)
+        missing_reason_response = self.client.patch(
+            f"/api/catalog/courses/{course.id}/moderate/",
+            {"status": Course.Status.REJECTED},
+            format="json",
+        )
+
+        self.assertEqual(missing_reason_response.status_code, 400)
+        self.assertIn("reason", missing_reason_response.data)
+
+        reason = "Course description is too short."
+        reject_response = self.client.patch(
+            f"/api/catalog/courses/{course.id}/moderate/",
+            {"status": Course.Status.REJECTED, "reason": reason},
+            format="json",
+        )
+
+        self.assertEqual(reject_response.status_code, 200)
+        course.refresh_from_db()
+        self.assertEqual(course.status, Course.Status.REJECTED)
+        self.assertEqual(CourseModerationDecision.objects.filter(course=course, status=Course.Status.REJECTED, reason=reason).count(), 1)
+        self.assertEqual(reject_response.data["decisions"][0]["reason"], reason)

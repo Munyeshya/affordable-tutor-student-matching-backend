@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from catalog.models import Course, Lesson, Subject, TutorSubject
+from catalog.models import Course, CourseModerationDecision, Lesson, Subject, TutorSubject
 
 
 class SubjectSerializer(serializers.ModelSerializer):
@@ -125,4 +125,26 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
 
 class CourseModerationSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Course.Status.choices)
-    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="", write_only=True)
+
+    def validate(self, attrs):
+        reason = (attrs.get("reason") or attrs.get("notes") or "").strip()
+        if attrs["status"] == Course.Status.REJECTED and not reason:
+            raise serializers.ValidationError({"reason": "A rejection reason is required."})
+        attrs["reason"] = reason
+        attrs.pop("notes", None)
+        return attrs
+
+
+class CourseModerationDecisionSerializer(serializers.ModelSerializer):
+    admin_email = serializers.EmailField(source="admin.email", read_only=True)
+    admin_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourseModerationDecision
+        fields = ("id", "status", "reason", "admin", "admin_email", "admin_name", "created_at")
+        read_only_fields = fields
+
+    def get_admin_name(self, obj):
+        return obj.admin.get_full_name() or obj.admin.username
