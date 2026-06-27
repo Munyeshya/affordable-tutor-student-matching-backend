@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole, IsTutor
 from catalog.models import TutorSubject
-from tutors.models import TutorAgreement, TutorProfile, TutorVerification
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification, TutorVerificationDecision
 from tutors.serializers import (
     TutorProfileSerializer,
     TutorAgreementSerializer,
@@ -18,7 +18,7 @@ from tutors.serializers import (
     TutorVerificationSerializer,
     PublicTutorSerializer,
 )
-from tutors.utils import get_marketplace_ready_tutor_ids
+from tutors.utils import build_tutor_setup_status, get_marketplace_ready_tutor_ids
 
 TUTOR_AGREEMENT_TEMPLATE = """Affordable Tutor Agreement
 
@@ -57,6 +57,51 @@ class TutorProfileMeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class TutorProfileCompletionView(APIView):
+    permission_classes = [IsTutor]
+
+    def _get_profile(self, user):
+        profile, _ = TutorProfile.objects.get_or_create(user=user, defaults={"full_name": user.get_full_name() or user.email})
+        return profile
+
+    def get(self, request):
+        profile = self._get_profile(request.user)
+        setup = build_tutor_setup_status(request.user)
+        return Response(
+            {
+                "profile": TutorProfileSerializer(profile).data,
+                "marketplace_ready": bool(setup["verification"] and setup["verification"].is_marketplace_ready()),
+                "completion_percentage": setup["completion_percentage"],
+                "missing_steps": setup["missing_steps"],
+                "steps": setup["steps"],
+                "subject_count": setup["subject_count"],
+                "documents_count": setup["documents_count"],
+                "agreement_signed": bool(
+                    setup["agreement"]
+                    and setup["agreement"].status == TutorAgreement.Status.SIGNED
+                    and setup["agreement"].agreed_to_terms
+                    and setup["agreement"].signed_file
+                ),
+            }
+        )
+
+    def patch(self, request):
+        profile = self._get_profile(request.user)
+        serializer = TutorProfileSerializer(instance=profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        setup = build_tutor_setup_status(request.user)
+        return Response(
+            {
+                "profile": serializer.data,
+                "marketplace_ready": bool(setup["verification"] and setup["verification"].is_marketplace_ready()),
+                "completion_percentage": setup["completion_percentage"],
+                "missing_steps": setup["missing_steps"],
+                "steps": setup["steps"],
+            }
+        )
 
 
 class TutorVerificationDocumentView(APIView):
@@ -128,52 +173,19 @@ class TutorSetupChecklistView(APIView):
     permission_classes = [IsTutor]
 
     def get(self, request):
-        profile = TutorProfile.objects.filter(user=request.user).first()
-        verification = TutorVerification.objects.filter(tutor=request.user).first()
-        agreement = TutorAgreement.objects.filter(tutor=request.user).first()
-        subject_count = TutorSubject.objects.filter(tutor=request.user).count()
-        documents_count = verification.documents.count() if verification else 0
-
-        steps = [
-            {
-                "key": "profile",
-                "label": "Create tutor profile",
-                "completed": bool(profile and profile.full_name),
-            },
-            {
-                "key": "subjects",
-                "label": "Add subjects and levels",
-                "completed": subject_count > 0,
-            },
-            {
-                "key": "documents",
-                "label": "Upload ID and certificate",
-                "completed": bool(verification and verification.has_required_documents()),
-            },
-            {
-                "key": "agreement",
-                "label": "Sign agreement",
-                "completed": bool(agreement and agreement.status == TutorAgreement.Status.SIGNED and agreement.agreed_to_terms and agreement.signed_file),
-            },
-            {
-                "key": "approval",
-                "label": "Admin approval",
-                "completed": bool(verification and verification.status == TutorVerification.Status.APPROVED),
-            },
-        ]
-
-        missing_steps = [step["key"] for step in steps if not step["completed"]]
+        setup = build_tutor_setup_status(request.user)
 
         return Response(
             {
-                "marketplace_ready": bool(verification and verification.is_marketplace_ready()),
-                "verification_status": getattr(verification, "status", None),
-                "profile_exists": bool(profile),
-                "subjects_count": subject_count,
-                "documents_count": documents_count,
-                "agreement_signed": bool(agreement and agreement.status == TutorAgreement.Status.SIGNED),
-                "steps": steps,
-                "missing_steps": missing_steps,
+                "marketplace_ready": bool(setup["verification"] and setup["verification"].is_marketplace_ready()),
+                "verification_status": getattr(setup["verification"], "status", None),
+                "profile_exists": bool(setup["profile"]),
+                "subjects_count": setup["subject_count"],
+                "documents_count": setup["documents_count"],
+                "agreement_signed": bool(setup["agreement"] and setup["agreement"].status == TutorAgreement.Status.SIGNED),
+                "completion_percentage": setup["completion_percentage"],
+                "steps": setup["steps"],
+                "missing_steps": setup["missing_steps"],
             }
         )
 
@@ -183,7 +195,7 @@ class PendingTutorVerificationListView(generics.ListAPIView):
     serializer_class = TutorVerificationSerializer
 
     def get_queryset(self):
-        queryset = TutorVerification.objects.select_related("tutor", "reviewed_by", "tutor__tutor_profile").prefetch_related("documents")
+        queryset = TutorVerification.objects.select_related("tutor", "reviewed_by", "tutor__tutor_profile").prefetch_related("documents", "decisions__admin")
         status_filter = self.request.query_params.get("status")
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -253,6 +265,7 @@ class TutorVerificationDecisionView(APIView):
         verification = TutorVerification.objects.select_related("tutor").get(pk=pk)
         serializer = TutorVerificationActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        reason = serializer.validated_data["reason"]
 
         if serializer.validated_data["status"] == TutorVerification.Status.APPROVED and not verification.has_required_documents():
             return Response(
@@ -296,9 +309,16 @@ class TutorVerificationDecisionView(APIView):
             )
 
         verification.status = serializer.validated_data["status"]
-        verification.notes = serializer.validated_data.get("notes", "")
+        verification.notes = reason
         verification.reviewed_by = request.user
         verification.reviewed_at = timezone.now()
         verification.save(update_fields=["status", "notes", "reviewed_by", "reviewed_at", "updated_at"])
+
+        TutorVerificationDecision.objects.create(
+            verification=verification,
+            admin=request.user,
+            status=verification.status,
+            reason=reason,
+        )
 
         return Response(TutorVerificationSerializer(verification).data, status=status.HTTP_200_OK)

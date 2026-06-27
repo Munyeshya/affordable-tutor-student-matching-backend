@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from catalog.models import Course, Lesson, Subject, TutorSubject
-from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification, TutorVerificationDecision, VerificationDocument
 
 
 class TutorVerificationDocumentTests(TestCase):
@@ -104,6 +104,7 @@ class TutorVerificationDocumentTests(TestCase):
         self.assertEqual(response.status_code, 200)
         verification.refresh_from_db()
         self.assertEqual(verification.status, TutorVerification.Status.APPROVED)
+        self.assertEqual(TutorVerificationDecision.objects.filter(verification=verification, status=TutorVerification.Status.APPROVED).count(), 1)
 
 
 class TutorAgreementTests(TestCase):
@@ -296,6 +297,55 @@ class TutorSetupAndSearchTests(TestCase):
         self.assertEqual(agreement.status, TutorAgreement.Status.SIGNED)
         self.assertTrue(agreement.agreed_to_terms)
         self.assertTrue(agreement.signed_file)
+
+    def test_tutor_completion_endpoint_returns_setup_progress_and_allows_profile_updates(self):
+        self.client.force_authenticate(self.tutor)
+        response = self.client.get("/api/tutors/me/completion/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["completion_percentage"], 100)
+        self.assertTrue(response.data["marketplace_ready"])
+        self.assertEqual(response.data["profile"]["full_name"], "Search Tutor")
+
+        update_response = self.client.patch(
+            "/api/tutors/me/completion/",
+            {
+                "headline": "Updated tutor headline",
+                "bio": "Updated bio",
+                "location": "Kigali",
+            },
+            format="json",
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.data["profile"]["headline"], "Updated tutor headline")
+        self.assertEqual(update_response.data["profile"]["location"], "Kigali")
+
+    def test_admin_rejection_requires_reason_and_writes_audit_trail(self):
+        verification = TutorVerification.objects.get(tutor=self.tutor)
+        self.client.force_authenticate(self.admin)
+        missing_reason_response = self.client.patch(
+            f"/api/tutors/verifications/{verification.id}/decide/",
+            {"status": TutorVerification.Status.REJECTED},
+            format="json",
+        )
+
+        self.assertEqual(missing_reason_response.status_code, 400)
+        self.assertIn("reason", missing_reason_response.data)
+
+        reason = "Missing current classroom practice evidence."
+        reject_response = self.client.patch(
+            f"/api/tutors/verifications/{verification.id}/decide/",
+            {"status": TutorVerification.Status.REJECTED, "reason": reason},
+            format="json",
+        )
+
+        self.assertEqual(reject_response.status_code, 200)
+        verification.refresh_from_db()
+        self.assertEqual(verification.status, TutorVerification.Status.REJECTED)
+        self.assertEqual(verification.notes, reason)
+        self.assertEqual(TutorVerificationDecision.objects.filter(verification=verification, status=TutorVerification.Status.REJECTED, reason=reason).count(), 1)
+        self.assertEqual(reject_response.data["decisions"][0]["reason"], reason)
 
     def test_admin_cannot_approve_without_signed_agreement(self):
         incomplete_tutor = User.objects.create_user(

@@ -21,6 +21,7 @@
 ## Tutor setup routes
 
 - `/api/tutors/me/`
+- `/api/tutors/me/completion/`
 - `/api/tutors/setup/checklist/`
 - `/api/tutors/documents/`
 - `/api/tutors/agreement/`
@@ -42,6 +43,7 @@
 ## Admin routes
 
 - tutor verification decisions
+- tutor verification decision history
 - course moderation
 - payout decisions
 - analytics

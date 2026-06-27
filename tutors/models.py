@@ -63,6 +63,21 @@ class TutorVerification(TimeStampedModel):
     def is_marketplace_ready(self):
         return self.status == self.Status.APPROVED and self.has_required_documents() and self.has_signed_agreement() and self.has_subject_levels()
 
+
+class TutorVerificationDecision(TimeStampedModel):
+    class Status(models.TextChoices):
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
+    verification = models.ForeignKey(TutorVerification, on_delete=models.CASCADE, related_name="decisions")
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tutor_verification_decisions")
+    status = models.CharField(max_length=20, choices=Status.choices)
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
 class VerificationDocument(TimeStampedModel):
     class DocType(models.TextChoices):
         ID = "ID", "National ID"

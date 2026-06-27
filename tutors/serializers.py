@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from catalog.models import TutorSubject
-from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification, TutorVerificationDecision, VerificationDocument
 
 
 class VerificationDocumentSerializer(serializers.ModelSerializer):
@@ -102,6 +102,7 @@ class TutorVerificationSerializer(serializers.ModelSerializer):
     tutor_email = serializers.EmailField(source="tutor.email", read_only=True)
     tutor_name = serializers.SerializerMethodField()
     documents = VerificationDocumentSerializer(many=True, read_only=True)
+    decisions = serializers.SerializerMethodField()
     has_required_documents = serializers.SerializerMethodField()
     missing_required_documents = serializers.SerializerMethodField()
 
@@ -119,6 +120,7 @@ class TutorVerificationSerializer(serializers.ModelSerializer):
             "has_required_documents",
             "missing_required_documents",
             "documents",
+            "decisions",
             "created_at",
             "updated_at",
         )
@@ -134,10 +136,43 @@ class TutorVerificationSerializer(serializers.ModelSerializer):
     def get_missing_required_documents(self, obj):
         return obj.missing_required_document_types()
 
+    def get_decisions(self, obj):
+        return TutorVerificationDecisionSerializer(obj.decisions.select_related("admin").all(), many=True).data
+
+
+class TutorVerificationDecisionSerializer(serializers.ModelSerializer):
+    admin_email = serializers.EmailField(source="admin.email", read_only=True)
+    admin_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TutorVerificationDecision
+        fields = (
+            "id",
+            "status",
+            "reason",
+            "admin",
+            "admin_email",
+            "admin_name",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    def get_admin_name(self, obj):
+        return obj.admin.get_full_name() or obj.admin.username
+
 
 class TutorVerificationActionSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=TutorVerification.Status.choices)
-    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="", write_only=True)
+
+    def validate(self, attrs):
+        reason = (attrs.get("reason") or attrs.get("notes") or "").strip()
+        if attrs["status"] == TutorVerification.Status.REJECTED and not reason:
+            raise serializers.ValidationError({"reason": "A rejection reason is required."})
+        attrs["reason"] = reason
+        attrs.pop("notes", None)
+        return attrs
 
 
 class TutorAgreementSerializer(serializers.ModelSerializer):
