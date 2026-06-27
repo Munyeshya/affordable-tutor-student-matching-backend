@@ -26,3 +26,9 @@ class AuthTests(TestCase):
         self.assertTrue(User.objects.filter(email="student@example.com").exists())
         user = User.objects.get(email="student@example.com")
         self.assertTrue(StudentProfile.objects.filter(user=user).exists())
+
+    def test_me_requires_authentication(self):
+        client = APIClient()
+        response = client.get("/api/auth/me/")
+
+        self.assertEqual(response.status_code, 401)

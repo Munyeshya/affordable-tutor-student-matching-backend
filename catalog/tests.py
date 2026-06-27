@@ -1,5 +1,11 @@
-from django.test import TestCase
+import shutil
+import tempfile
+from io import BytesIO
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
+from PIL import Image
 
 from accounts.models import User
 from catalog.models import Course, CourseModerationDecision, Lesson, Subject, TutorSubject
@@ -9,6 +15,12 @@ from tutors.models import TutorAgreement, TutorProfile, TutorVerification, Verif
 
 class CatalogAccessTests(TestCase):
     def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
+        self.addCleanup(self.media_override.disable)
+        self.addCleanup(shutil.rmtree, self.media_root, ignore_errors=True)
+
         self.client = APIClient()
         self.student = User.objects.create_user(username="student-catalog", email="student-catalog@example.com", password="pass12345", role=User.Role.STUDENT)
         StudentProfile.objects.create(user=self.student, full_name="Student Catalog")
@@ -16,6 +28,12 @@ class CatalogAccessTests(TestCase):
         TutorProfile.objects.create(user=self.tutor, full_name="Tutor Catalog", hourly_rate=25, teaches_online=True)
         self.subject = Subject.objects.create(name="Chemistry")
         TutorSubject.objects.create(tutor=self.tutor, subject=self.subject, level=TutorSubject.Level.SECONDARY_UPPER)
+
+    def _build_test_image(self, name="thumbnail.png"):
+        image = Image.new("RGB", (2, 2), color=(255, 0, 0))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
 
     def test_tutor_can_create_draft_course_before_approval(self):
         self.client.force_authenticate(self.tutor)
@@ -34,6 +52,45 @@ class CatalogAccessTests(TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["status"], Course.Status.DRAFT)
         self.assertEqual(Course.objects.filter(tutor=self.tutor, title="Chemistry Basics").count(), 1)
+        self.assertIsNone(response.data["thumbnail_url"])
+        self.assertFalse(response.data["has_thumbnail"])
+
+    def test_tutor_can_upload_course_thumbnail_and_lesson_media(self):
+        self.client.force_authenticate(self.tutor)
+        course_response = self.client.post(
+            "/api/catalog/courses/create/",
+            {
+                "title": "Chemistry Media",
+                "description": "Media rich course",
+                "subject": self.subject.id,
+                "academic_level": "SECONDARY_UPPER",
+                "price": "75.00",
+                "thumbnail": self._build_test_image(),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(course_response.status_code, 201, course_response.data)
+        self.assertTrue(course_response.data["has_thumbnail"])
+        self.assertTrue(course_response.data["thumbnail_url"].endswith(".png"))
+
+        course = Course.objects.get(pk=course_response.data["id"])
+        lesson_response = self.client.post(
+            f"/api/catalog/courses/{course.id}/lessons/",
+            {
+                "title": "Video Lesson",
+                "topic": "Atoms",
+                "description": "Video lesson",
+                "order_number": 1,
+                "is_preview": True,
+                "video_file": SimpleUploadedFile("lesson.mp4", b"fake-video-data", content_type="video/mp4"),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(lesson_response.status_code, 201, lesson_response.data)
+        self.assertTrue(lesson_response.data["has_video_file"])
+        self.assertTrue(lesson_response.data["video_file_url"].endswith("lesson.mp4"))
 
     def test_tutor_can_manage_lessons_inside_their_account(self):
         course = Course.objects.create(

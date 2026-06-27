@@ -36,6 +36,9 @@ class TutorSubjectSerializer(serializers.ModelSerializer):
 
 
 class LessonSerializer(serializers.ModelSerializer):
+    video_file_url = serializers.SerializerMethodField()
+    has_video_file = serializers.SerializerMethodField()
+
     class Meta:
         model = Lesson
         fields = (
@@ -45,6 +48,8 @@ class LessonSerializer(serializers.ModelSerializer):
             "topic",
             "description",
             "video_file",
+            "video_file_url",
+            "has_video_file",
             "video_url",
             "duration",
             "order_number",
@@ -53,6 +58,21 @@ class LessonSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "course", "created_at", "updated_at")
+
+    def get_video_file_url(self, obj):
+        request = self.context.get("request")
+        if not obj.video_file:
+            return None
+        url = obj.video_file.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_has_video_file(self, obj):
+        return bool(obj.video_file)
+
+    def validate_video_file(self, value):
+        if value and getattr(value, "size", 0) > 100 * 1024 * 1024:
+            raise serializers.ValidationError("Lesson videos must be smaller than 100 MB.")
+        return value
 
 
 class LessonSummarySerializer(serializers.ModelSerializer):
@@ -65,6 +85,8 @@ class CourseSerializer(serializers.ModelSerializer):
     tutor_name = serializers.CharField(source="tutor.get_full_name", read_only=True)
     subject_name = serializers.CharField(source="subject.name", read_only=True)
     lessons = LessonSummarySerializer(many=True, read_only=True)
+    thumbnail_url = serializers.SerializerMethodField()
+    has_thumbnail = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
@@ -79,12 +101,24 @@ class CourseSerializer(serializers.ModelSerializer):
             "academic_level",
             "price",
             "thumbnail",
+            "thumbnail_url",
+            "has_thumbnail",
             "status",
             "lessons",
             "created_at",
             "updated_at",
         )
         read_only_fields = ("id", "tutor", "status", "created_at", "updated_at", "lessons")
+
+    def get_thumbnail_url(self, obj):
+        request = self.context.get("request")
+        if not obj.thumbnail:
+            return None
+        url = obj.thumbnail.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_has_thumbnail(self, obj):
+        return bool(obj.thumbnail)
 
 
 class PublicCourseSerializer(CourseSerializer):
@@ -106,9 +140,23 @@ class PublicCourseSerializer(CourseSerializer):
 
 
 class CourseCreateUpdateSerializer(serializers.ModelSerializer):
+    thumbnail_url = serializers.SerializerMethodField()
+    has_thumbnail = serializers.SerializerMethodField()
+
     class Meta:
         model = Course
-        fields = ("id", "title", "description", "subject", "academic_level", "price", "thumbnail", "status")
+        fields = (
+            "id",
+            "title",
+            "description",
+            "subject",
+            "academic_level",
+            "price",
+            "thumbnail",
+            "thumbnail_url",
+            "has_thumbnail",
+            "status",
+        )
         read_only_fields = ("id", "status")
 
     def validate(self, attrs):
@@ -121,6 +169,21 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"subject": "You can only create courses for subjects you teach."})
 
         return attrs
+
+    def validate_thumbnail(self, value):
+        if value and getattr(value, "size", 0) > 10 * 1024 * 1024:
+            raise serializers.ValidationError("Thumbnail must be smaller than 10 MB.")
+        return value
+
+    def get_thumbnail_url(self, obj):
+        request = self.context.get("request")
+        if not obj.thumbnail:
+            return None
+        url = obj.thumbnail.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_has_thumbnail(self, obj):
+        return bool(obj.thumbnail)
 
 
 class CourseModerationSerializer(serializers.Serializer):

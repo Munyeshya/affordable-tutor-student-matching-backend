@@ -10,6 +10,10 @@
 - `/api/catalog/courses/`
 - `/api/catalog/courses/<id>/public/`
 
+## Authenticated user routes
+
+- `/api/auth/me/`
+
 ## Authenticated student routes
 
 - Bookings creation and booking payments
@@ -56,6 +60,7 @@
 - `/api/catalog/courses/<id>/`
 - `/api/catalog/courses/<course_id>/lessons/`
 - `/api/catalog/lessons/<id>/`
+- Multipart upload supported for course thumbnails and lesson videos
 
 ## Admin routes
 

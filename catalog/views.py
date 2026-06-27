@@ -1,9 +1,9 @@
 from django.db.models import Q
 from rest_framework import generics, permissions
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import User
 from accounts.permissions import IsAdminRole, IsTutor
 from catalog.models import Course, CourseModerationDecision, Lesson, Subject, TutorSubject
 from catalog.serializers import (
@@ -94,6 +94,7 @@ class TutorCourseListView(generics.ListAPIView):
 class CourseCreateView(generics.CreateAPIView):
     serializer_class = CourseCreateUpdateSerializer
     permission_classes = [IsTutor]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def perform_create(self, serializer):
         serializer.save(tutor=self.request.user)
@@ -102,7 +103,7 @@ class CourseCreateView(generics.CreateAPIView):
 class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CourseCreateUpdateSerializer
     permission_classes = [IsTutor]
-    queryset = Course.objects.all()
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
         return Course.objects.filter(tutor=self.request.user)
@@ -163,6 +164,7 @@ class PublicCourseDetailView(generics.RetrieveAPIView):
 class LessonListCreateView(generics.ListCreateAPIView):
     serializer_class = LessonSerializer
     permission_classes = [IsTutor]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
         course_id = self.kwargs["course_id"]
@@ -177,6 +179,7 @@ class LessonListCreateView(generics.ListCreateAPIView):
 class LessonDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = LessonSerializer
     permission_classes = [IsTutor]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
         return Lesson.objects.filter(course__tutor=self.request.user)
