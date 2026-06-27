@@ -5,6 +5,7 @@ from bookings.models import Booking
 from catalog.models import Course
 from payments.models import CoursePurchase, LessonProgress, Payment, Payout
 from notifications.utils import create_notification
+from tutors.models import TutorVerification
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -114,6 +115,10 @@ class CoursePurchaseCreateSerializer(serializers.Serializer):
 
         if course.status != Course.Status.PUBLISHED:
             raise serializers.ValidationError("Course is not published.")
+
+        verification = TutorVerification.objects.filter(tutor=course.tutor).first()
+        if not verification or not verification.is_marketplace_ready():
+            raise serializers.ValidationError("Course is not available yet.")
 
         if CoursePurchase.objects.filter(student=self.context["request"].user, course=course, status=CoursePurchase.Status.PAID).exists():
             raise serializers.ValidationError("You have already purchased this course.")

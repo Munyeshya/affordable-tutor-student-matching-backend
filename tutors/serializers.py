@@ -77,7 +77,7 @@ class PublicTutorSerializer(serializers.ModelSerializer):
         )
 
     def get_verification_status(self, obj):
-        verification = getattr(obj.user, "tutor_verification", None)
+        verification = TutorVerification.objects.filter(tutor=obj.user).first()
         return getattr(verification, "status", None)
 
     def get_subjects(self, obj):

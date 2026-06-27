@@ -1,6 +1,7 @@
 from rest_framework.permissions import BasePermission
 
 from accounts.models import User
+from tutors.models import TutorVerification
 
 
 class HasRole(BasePermission):
@@ -28,3 +29,13 @@ class IsParent(HasRole):
 class IsAdminRole(HasRole):
     allowed_roles = {User.Role.ADMIN}
 
+
+class IsMarketplaceReadyTutor(HasRole):
+    allowed_roles = {User.Role.TUTOR}
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+
+        verification = TutorVerification.objects.filter(tutor=request.user).first()
+        return bool(verification and verification.is_marketplace_ready())

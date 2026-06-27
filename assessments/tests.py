@@ -6,11 +6,11 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from assessments.models import LessonAssessment, LessonAssessmentQuestion, StudentAssessmentAttempt
-from catalog.models import Course, Lesson, Subject
+from catalog.models import Course, Lesson, Subject, TutorSubject
 from notifications.models import Notification
 from payments.models import CoursePurchase
 from students.models import StudentProfile
-from tutors.models import TutorProfile, TutorVerification
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
 class AssessmentTests(TestCase):
@@ -20,8 +20,22 @@ class AssessmentTests(TestCase):
         StudentProfile.objects.create(user=self.student, full_name="Student Four")
         self.tutor = User.objects.create_user(username="tutor4", email="tutor4@example.com", password="pass12345", role=User.Role.TUTOR)
         TutorProfile.objects.create(user=self.tutor, full_name="Tutor Four", hourly_rate=20, teaches_online=True)
-        TutorVerification.objects.create(tutor=self.tutor, status=TutorVerification.Status.APPROVED)
+        verification = TutorVerification.objects.create(tutor=self.tutor, status=TutorVerification.Status.APPROVED)
         self.subject = Subject.objects.create(name="Biology")
+        TutorSubject.objects.create(tutor=self.tutor, subject=self.subject, level=TutorSubject.Level.SECONDARY_UPPER)
+        VerificationDocument.objects.create(verification=verification, doc_type=VerificationDocument.DocType.ID, file="verification_docs/id.pdf")
+        VerificationDocument.objects.create(
+            verification=verification,
+            doc_type=VerificationDocument.DocType.CERTIFICATE,
+            file="verification_docs/certificate.pdf",
+        )
+        TutorAgreement.objects.create(
+            tutor=self.tutor,
+            status=TutorAgreement.Status.SIGNED,
+            agreed_to_terms=True,
+            signed_name="Tutor Four",
+            signed_file="tutor_agreements/signed.pdf",
+        )
         self.course = Course.objects.create(
             tutor=self.tutor,
             title="Biology 101",
@@ -82,4 +96,3 @@ class AssessmentTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Notification.objects.filter(user=self.tutor, kind="ASSESSMENT_CONFIRMATION").count(), 1)
-

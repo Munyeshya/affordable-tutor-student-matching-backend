@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsTutor
 from availability.models import AvailabilitySlot
 from availability.serializers import AvailabilitySlotSerializer
+from tutors.utils import get_marketplace_ready_tutor_ids
 
 
 class TutorAvailabilityListCreateView(generics.ListCreateAPIView):
@@ -38,8 +39,8 @@ class PublicTutorAvailabilityView(generics.ListAPIView):
 
     def get_queryset(self):
         tutor_id = self.request.query_params.get("tutor")
-        queryset = AvailabilitySlot.objects.filter(is_booked=False)
+        ready_ids = get_marketplace_ready_tutor_ids()
+        queryset = AvailabilitySlot.objects.filter(is_booked=False, tutor_id__in=ready_ids)
         if tutor_id:
             queryset = queryset.filter(tutor_id=tutor_id)
         return queryset.order_by("start_datetime")
-

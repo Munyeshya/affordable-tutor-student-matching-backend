@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsAdminRole, IsStudent, IsTutor
+from accounts.permissions import IsAdminRole, IsMarketplaceReadyTutor, IsStudent, IsTutor
 from bookings.models import Booking
 from payments.models import CoursePurchase, LessonProgress, Payment, Payout
 from payments.serializers import (
@@ -57,7 +57,7 @@ class PayoutListView(generics.ListAPIView):
 
 
 class PayoutRequestView(APIView):
-    permission_classes = [IsTutor]
+    permission_classes = [IsMarketplaceReadyTutor]
 
     def post(self, request):
         serializer = PayoutRequestSerializer(data=request.data)

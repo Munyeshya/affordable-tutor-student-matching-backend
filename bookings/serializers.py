@@ -64,7 +64,8 @@ class BookingCreateSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError({"tutor_id": "Tutor not found."})
 
-        if not hasattr(tutor, "tutor_verification") or tutor.tutor_verification.status != TutorVerification.Status.APPROVED:
+        verification = TutorVerification.objects.filter(tutor=tutor).first()
+        if not verification or not verification.is_marketplace_ready():
             raise serializers.ValidationError({"tutor_id": "Tutor must be approved before booking."})
 
         try:

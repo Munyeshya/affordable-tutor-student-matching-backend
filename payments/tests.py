@@ -9,7 +9,8 @@ from bookings.models import Booking
 from catalog.models import Course, Subject
 from notifications.models import Notification
 from students.models import StudentProfile
-from tutors.models import TutorProfile, TutorVerification
+from catalog.models import TutorSubject
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
 class PaymentTests(TestCase):
@@ -19,8 +20,22 @@ class PaymentTests(TestCase):
         StudentProfile.objects.create(user=self.student, full_name="Student Two")
         self.tutor = User.objects.create_user(username="tutor2", email="tutor2@example.com", password="pass12345", role=User.Role.TUTOR)
         TutorProfile.objects.create(user=self.tutor, full_name="Tutor Two", hourly_rate=20, teaches_online=True)
-        TutorVerification.objects.create(tutor=self.tutor, status=TutorVerification.Status.APPROVED)
+        verification = TutorVerification.objects.create(tutor=self.tutor, status=TutorVerification.Status.APPROVED)
         self.subject = Subject.objects.create(name="Physics")
+        TutorSubject.objects.create(tutor=self.tutor, subject=self.subject, level=TutorSubject.Level.UNIVERSITY)
+        VerificationDocument.objects.create(verification=verification, doc_type=VerificationDocument.DocType.ID, file="verification_docs/id.pdf")
+        VerificationDocument.objects.create(
+            verification=verification,
+            doc_type=VerificationDocument.DocType.CERTIFICATE,
+            file="verification_docs/certificate.pdf",
+        )
+        TutorAgreement.objects.create(
+            tutor=self.tutor,
+            status=TutorAgreement.Status.SIGNED,
+            agreed_to_terms=True,
+            signed_name="Tutor Two",
+            signed_file="tutor_agreements/signed.pdf",
+        )
         self.course = Course.objects.create(
             tutor=self.tutor,
             title="Physics Basics",

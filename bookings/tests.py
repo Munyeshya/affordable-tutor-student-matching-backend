@@ -10,7 +10,7 @@ from availability.models import AvailabilitySlot
 from catalog.models import Subject, TutorSubject
 from notifications.models import Notification
 from students.models import StudentProfile
-from tutors.models import TutorProfile, TutorVerification
+from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
 class BookingTests(TestCase):
@@ -20,9 +20,22 @@ class BookingTests(TestCase):
         StudentProfile.objects.create(user=self.student, full_name="Student One")
         self.tutor = User.objects.create_user(username="tutor1", email="tutor1@example.com", password="pass12345", role=User.Role.TUTOR)
         TutorProfile.objects.create(user=self.tutor, full_name="Tutor One", hourly_rate=10, teaches_online=True, teaches_in_person=False)
-        TutorVerification.objects.create(tutor=self.tutor, status=TutorVerification.Status.APPROVED)
+        verification = TutorVerification.objects.create(tutor=self.tutor, status=TutorVerification.Status.APPROVED)
         self.subject = Subject.objects.create(name="Mathematics")
-        TutorSubject.objects.create(tutor=self.tutor, subject=self.subject, level="Basic")
+        TutorSubject.objects.create(tutor=self.tutor, subject=self.subject, level=TutorSubject.Level.PRIMARY)
+        VerificationDocument.objects.create(verification=verification, doc_type=VerificationDocument.DocType.ID, file="verification_docs/id.pdf")
+        VerificationDocument.objects.create(
+            verification=verification,
+            doc_type=VerificationDocument.DocType.CERTIFICATE,
+            file="verification_docs/certificate.pdf",
+        )
+        TutorAgreement.objects.create(
+            tutor=self.tutor,
+            status=TutorAgreement.Status.SIGNED,
+            agreed_to_terms=True,
+            signed_name="Tutor One",
+            signed_file="tutor_agreements/signed.pdf",
+        )
         self.start = timezone.now() + timedelta(days=1)
         self.end = self.start + timedelta(hours=1)
         AvailabilitySlot.objects.create(

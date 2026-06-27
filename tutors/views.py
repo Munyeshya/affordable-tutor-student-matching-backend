@@ -17,6 +17,7 @@ from tutors.serializers import (
     TutorVerificationSerializer,
     PublicTutorSerializer,
 )
+from tutors.utils import get_marketplace_ready_tutor_ids
 
 TUTOR_AGREEMENT_TEMPLATE = """Affordable Tutor Agreement
 
@@ -140,11 +141,8 @@ class PublicTutorListView(generics.ListAPIView):
     serializer_class = PublicTutorSerializer
 
     def get_queryset(self):
-        queryset = (
-            TutorProfile.objects.select_related("user", "user__tutor_verification")
-            .filter(user__tutor_verification__status=TutorVerification.Status.APPROVED)
-            .distinct()
-        )
+        ready_ids = get_marketplace_ready_tutor_ids()
+        queryset = TutorProfile.objects.select_related("user", "user__tutor_verification").filter(user_id__in=ready_ids).distinct()
 
         subject = self.request.query_params.get("subject")
         location = self.request.query_params.get("location")

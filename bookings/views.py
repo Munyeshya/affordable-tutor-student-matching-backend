@@ -9,6 +9,7 @@ from accounts.permissions import IsStudent, IsTutor
 from bookings.models import Booking, BookingEvent
 from bookings.serializers import BookingActionSerializer, BookingCreateSerializer, BookingSerializer
 from availability.models import AvailabilitySlot
+from tutors.models import TutorVerification
 from notifications.utils import create_notification
 
 
@@ -45,6 +46,11 @@ class BookingActionView(APIView):
 
         if action in {"ACCEPT", "REJECT", "COMPLETE"} and user.role != User.Role.TUTOR:
             return Response({"detail": "Only tutors can perform this action."}, status=status.HTTP_403_FORBIDDEN)
+        verification = TutorVerification.objects.filter(tutor=user).first()
+        if action in {"ACCEPT", "REJECT", "COMPLETE"} and not verification:
+            return Response({"detail": "Tutor verification is required."}, status=status.HTTP_403_FORBIDDEN)
+        if action in {"ACCEPT", "REJECT", "COMPLETE"} and not verification.is_marketplace_ready():
+            return Response({"detail": "Tutor must complete verification before managing bookings."}, status=status.HTTP_403_FORBIDDEN)
         if action == "CANCEL" and user.role not in {User.Role.STUDENT, User.Role.TUTOR}:
             return Response({"detail": "Only students or tutors can cancel."}, status=status.HTTP_403_FORBIDDEN)
 

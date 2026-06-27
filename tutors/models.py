@@ -45,6 +45,24 @@ class TutorVerification(TimeStampedModel):
     def has_required_documents(self):
         return not self.missing_required_document_types()
 
+    def has_signed_agreement(self):
+        try:
+            agreement = self.tutor.tutor_agreement
+        except TutorAgreement.DoesNotExist:
+            return False
+        return bool(
+            agreement
+            and agreement.status == TutorAgreement.Status.SIGNED
+            and agreement.agreed_to_terms
+            and agreement.signed_file
+        )
+
+    def has_subject_levels(self):
+        return self.tutor.tutor_subjects.exists()
+
+    def is_marketplace_ready(self):
+        return self.status == self.Status.APPROVED and self.has_required_documents() and self.has_signed_agreement() and self.has_subject_levels()
+
 class VerificationDocument(TimeStampedModel):
     class DocType(models.TextChoices):
         ID = "ID", "National ID"
