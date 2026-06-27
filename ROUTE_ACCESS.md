@@ -35,6 +35,7 @@
 
 - `/api/catalog/courses/<id>/submit/`
 - `/api/payments/payouts/request/`
+- `/api/payments/earnings/`
 - booking accept/reject/complete actions
 
 ## Tutor draft management routes

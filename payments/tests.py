@@ -10,7 +10,7 @@ from catalog.models import Course, Subject
 from notifications.models import Notification
 from students.models import StudentProfile
 from catalog.models import TutorSubject
-from payments.models import Payout, PayoutDecision
+from payments.models import CoursePurchase, Payment, Payout, PayoutDecision
 from tutors.models import TutorAgreement, TutorProfile, TutorVerification, VerificationDocument
 
 
@@ -69,6 +69,8 @@ class PaymentTests(TestCase):
 class PayoutAuditTests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        self.student = User.objects.create_user(username="student-payout", email="student-payout@example.com", password="pass12345", role=User.Role.STUDENT)
+        StudentProfile.objects.create(user=self.student, full_name="Student Payout")
         self.tutor = User.objects.create_user(username="tutor-payout", email="tutor-payout@example.com", password="pass12345", role=User.Role.TUTOR)
         TutorProfile.objects.create(user=self.tutor, full_name="Tutor Payout", hourly_rate=20, teaches_online=True)
         verification = TutorVerification.objects.create(tutor=self.tutor, status=TutorVerification.Status.APPROVED)
@@ -132,3 +134,56 @@ class PayoutAuditTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data[0]["reason"], "Approved after review.")
+
+    def test_tutor_earnings_summary_reports_revenue_and_balance(self):
+        Payment.objects.create(
+            booking=self._make_booking(amount=120),
+            student=User.objects.get(username="student-payout"),
+            tutor=self.tutor,
+            amount=120,
+            currency="RWF",
+            provider="SIMULATED",
+            status=Payment.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        course = Course.objects.create(
+            tutor=self.tutor,
+            title="Economics 101",
+            description="Intro",
+            subject=self.subject,
+            price=80,
+            status=Course.Status.PUBLISHED,
+        )
+        CoursePurchase.objects.create(
+            student=self.student,
+            course=course,
+            amount=80,
+            currency="RWF",
+            provider="SIMULATED",
+            status=CoursePurchase.Status.PAID,
+            purchased_at=timezone.now(),
+        )
+        Payout.objects.create(tutor=self.tutor, amount=50, status=Payout.Status.PAID, paid_at=timezone.now())
+
+        self.client.force_authenticate(self.tutor)
+        response = self.client.get("/api/payments/earnings/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["booking_revenue"], 120)
+        self.assertEqual(response.data["course_revenue"], 80)
+        self.assertEqual(response.data["total_earnings"], 200)
+        self.assertEqual(response.data["paid_payouts"], 50)
+        self.assertEqual(response.data["available_balance"], 150)
+
+    def _make_booking(self, amount=20):
+        return Booking.objects.create(
+            student=self.student,
+            tutor=self.tutor,
+            subject=self.subject,
+            start_datetime=timezone.now() + timedelta(days=1),
+            end_datetime=timezone.now() + timedelta(days=1, hours=1),
+            mode="ONLINE",
+            status=Booking.Status.CONFIRMED,
+            hourly_rate=20,
+            total_amount=amount,
+        )

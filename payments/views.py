@@ -1,3 +1,4 @@
+from django.db.models import Count, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -119,6 +120,46 @@ class PayoutDecisionHistoryView(APIView):
         if request.user.role != User.Role.TUTOR and request.user.role != User.Role.ADMIN:
             return Response(status=status.HTTP_403_FORBIDDEN)
         return Response(PayoutDecisionSerializer(payout.decisions.select_related("admin").all(), many=True).data)
+
+
+class TutorEarningsSummaryView(APIView):
+    permission_classes = [IsTutor]
+
+    def get(self, request):
+        tutor = request.user
+        payment_qs = Payment.objects.filter(tutor=tutor, status=Payment.Status.PAID)
+        course_purchase_qs = CoursePurchase.objects.filter(course__tutor=tutor, status=CoursePurchase.Status.PAID)
+        payout_qs = Payout.objects.filter(tutor=tutor)
+
+        booking_revenue = payment_qs.aggregate(total=Sum("amount"))["total"] or 0
+        course_revenue = course_purchase_qs.aggregate(total=Sum("amount"))["total"] or 0
+        paid_payouts = payout_qs.filter(status=Payout.Status.PAID).aggregate(total=Sum("amount"))["total"] or 0
+        pending_payouts = payout_qs.filter(status=Payout.Status.REQUESTED).aggregate(total=Sum("amount"))["total"] or 0
+        approved_payouts = payout_qs.filter(status=Payout.Status.APPROVED).aggregate(total=Sum("amount"))["total"] or 0
+
+        total_earnings = booking_revenue + course_revenue
+        available_balance = total_earnings - paid_payouts
+
+        return Response(
+            {
+                "booking_revenue": booking_revenue,
+                "course_revenue": course_revenue,
+                "total_earnings": total_earnings,
+                "paid_payouts": paid_payouts,
+                "pending_payouts": pending_payouts,
+                "approved_payouts": approved_payouts,
+                "available_balance": available_balance,
+                "paid_bookings_count": payment_qs.count(),
+                "paid_course_purchases_count": course_purchase_qs.count(),
+                "payouts_count": payout_qs.count(),
+                "recent_payouts": list(
+                    payout_qs.select_related("tutor").values("id", "amount", "status", "paid_at", "created_at").order_by("-created_at")[:10]
+                ),
+                "recent_payments": list(
+                    payment_qs.select_related("booking").values("id", "booking_id", "amount", "currency", "status", "paid_at", "created_at").order_by("-created_at")[:10]
+                ),
+            }
+        )
 
 
 class CoursePurchaseListView(generics.ListAPIView):
