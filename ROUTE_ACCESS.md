@@ -21,6 +21,15 @@
 - Booking dispute creation and dispute history
 - Chat threads and booking messages
 
+## Authenticated parent routes
+
+- `/api/parents/me/`
+- `/api/parents/students/`
+- `/api/parents/dashboard/`
+- Parent booking creation on `/api/bookings/create/` using `student_id`
+- Parent booking list on `/api/bookings/`
+- Parent dispute creation and dispute history
+
 ## Tutor setup routes
 
 - `/api/tutors/me/`

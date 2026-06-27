@@ -10,6 +10,7 @@ from bookings.models import Booking, BookingEvent, Dispute, DisputeDecision
 from catalog.models import Subject
 from catalog.models import TutorSubject
 from notifications.utils import create_notification
+from students.models import ParentStudentLink
 from tutors.models import TutorVerification
 
 
@@ -48,6 +49,7 @@ class BookingSerializer(serializers.ModelSerializer):
 class BookingCreateSerializer(serializers.Serializer):
     tutor_id = serializers.IntegerField()
     subject_id = serializers.IntegerField()
+    student_id = serializers.IntegerField(required=False)
     availability_slot_id = serializers.IntegerField(required=False, allow_null=True)
     start_datetime = serializers.DateTimeField(required=False)
     end_datetime = serializers.DateTimeField(required=False)
@@ -63,6 +65,24 @@ class BookingCreateSerializer(serializers.Serializer):
             tutor = User.objects.get(pk=tutor_id, role=User.Role.TUTOR)
         except User.DoesNotExist:
             raise serializers.ValidationError({"tutor_id": "Tutor not found."})
+
+        actor = request.user
+        student = actor
+        if actor.role == User.Role.PARENT:
+            student_id = attrs.get("student_id")
+            if not student_id:
+                raise serializers.ValidationError({"student_id": "Parent bookings require a linked student."})
+            try:
+                student = User.objects.get(pk=student_id, role=User.Role.STUDENT)
+            except User.DoesNotExist as exc:
+                raise serializers.ValidationError({"student_id": "Student not found."}) from exc
+
+            if not ParentStudentLink.objects.filter(parent=actor, student=student).exists():
+                raise serializers.ValidationError({"student_id": "This student is not linked to your account."})
+        elif actor.role != User.Role.STUDENT:
+            raise serializers.ValidationError({"detail": "Only students or parents can create bookings."})
+        elif attrs.get("student_id") and attrs["student_id"] != actor.id:
+            raise serializers.ValidationError({"student_id": "Students can only book for themselves."})
 
         verification = TutorVerification.objects.filter(tutor=tutor).first()
         if not verification or not verification.is_marketplace_ready():
@@ -126,11 +146,13 @@ class BookingCreateSerializer(serializers.Serializer):
         attrs["tutor"] = tutor
         attrs["subject"] = subject
         attrs["slot"] = slot
+        attrs["student"] = student
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
-        student = self.context["request"].user
+        actor = self.context["request"].user
+        student = validated_data.pop("student")
         slot = validated_data.pop("slot", None)
         tutor = validated_data.pop("tutor")
         subject = validated_data.pop("subject")
@@ -154,15 +176,25 @@ class BookingCreateSerializer(serializers.Serializer):
             currency=getattr(getattr(tutor, "tutor_profile", None), "currency", "RWF"),
         )
 
-        BookingEvent.objects.create(booking=booking, actor=student, action="CREATED", message="Booking created.")
+        BookingEvent.objects.create(booking=booking, actor=actor, action="CREATED", message="Booking created.")
         create_notification(
             user=tutor,
-            actor=student,
+            actor=actor,
             title="New booking request",
             body=f"{student.get_full_name() or student.email} created a booking request.",
             link=f"/api/bookings/{booking.id}/",
             kind="BOOKING_CREATED",
         )
+
+        if actor.id != student.id:
+            create_notification(
+                user=student,
+                actor=actor,
+                title="Booking created for you",
+                body=f"{actor.get_full_name() or actor.email} created a booking request on your behalf.",
+                link=f"/api/bookings/{booking.id}/",
+                kind="BOOKING_CREATED_FOR_STUDENT",
+            )
 
         if slot:
             slot.is_booked = True
@@ -227,14 +259,22 @@ class DisputeCreateSerializer(serializers.Serializer):
         except Booking.DoesNotExist:
             raise serializers.ValidationError({"booking_id": "Booking not found."})
 
-        if request.user.id not in {booking.student_id, booking.tutor_id}:
+        is_parent_guardian = request.user.role == User.Role.PARENT and ParentStudentLink.objects.filter(
+            parent=request.user,
+            student_id=booking.student_id,
+        ).exists()
+
+        if request.user.id not in {booking.student_id, booking.tutor_id} and not is_parent_guardian:
             raise serializers.ValidationError({"booking_id": "You can only report your own bookings."})
 
         if not attrs["reason"].strip():
             raise serializers.ValidationError({"reason": "Please provide a reason for the dispute."})
 
         attrs["booking"] = booking
-        attrs["reported_against"] = booking.tutor if request.user.id == booking.student_id else booking.student
+        if request.user.id == booking.student_id or is_parent_guardian:
+            attrs["reported_against"] = booking.tutor
+        else:
+            attrs["reported_against"] = booking.student
         return attrs
 
     def create(self, validated_data):

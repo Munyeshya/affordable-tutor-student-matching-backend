@@ -25,3 +25,17 @@ class ParentProfile(TimeStampedModel):
 
     def __str__(self):
         return self.full_name
+
+
+class ParentStudentLink(TimeStampedModel):
+    parent = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="parent_student_links")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="guardian_links")
+    label = models.CharField(max_length=120, blank=True, default="")
+    is_primary = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        unique_together = ("parent", "student")
+
+    def __str__(self):
+        return f"{self.parent.email} -> {self.student.email}"

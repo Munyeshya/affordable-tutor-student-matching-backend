@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsStudent, IsTutor
+from accounts.permissions import IsTutor
 from bookings.models import Booking, BookingEvent, Dispute, DisputeDecision
 from bookings.serializers import (
     BookingActionSerializer,
@@ -18,6 +18,7 @@ from bookings.serializers import (
     DisputeSerializer,
 )
 from availability.models import AvailabilitySlot
+from students.models import ParentStudentLink
 from tutors.models import TutorVerification
 from notifications.utils import create_notification
 
@@ -30,6 +31,9 @@ class BookingListView(generics.ListAPIView):
         user = self.request.user
         if user.role == User.Role.STUDENT:
             return Booking.objects.filter(student=user).select_related("student", "tutor", "subject").prefetch_related("events").order_by("-created_at")
+        if user.role == User.Role.PARENT:
+            student_ids = ParentStudentLink.objects.filter(parent=user).values_list("student_id", flat=True)
+            return Booking.objects.filter(student_id__in=student_ids).select_related("student", "tutor", "subject").prefetch_related("events").order_by("-created_at")
         if user.role == User.Role.TUTOR:
             return Booking.objects.filter(tutor=user).select_related("student", "tutor", "subject").prefetch_related("events").order_by("-created_at")
         return Booking.objects.select_related("student", "tutor", "subject").prefetch_related("events").order_by("-created_at")
@@ -37,7 +41,7 @@ class BookingListView(generics.ListAPIView):
 
 class BookingCreateView(generics.CreateAPIView):
     serializer_class = BookingCreateSerializer
-    permission_classes = [IsStudent]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 class BookingActionView(APIView):
@@ -60,13 +64,14 @@ class BookingActionView(APIView):
             return Response({"detail": "Tutor verification is required."}, status=status.HTTP_403_FORBIDDEN)
         if action in {"ACCEPT", "REJECT", "COMPLETE"} and not verification.is_marketplace_ready():
             return Response({"detail": "Tutor must complete verification before managing bookings."}, status=status.HTTP_403_FORBIDDEN)
-        if action == "CANCEL" and user.role not in {User.Role.STUDENT, User.Role.TUTOR}:
-            return Response({"detail": "Only students or tutors can cancel."}, status=status.HTTP_403_FORBIDDEN)
+        if action == "CANCEL" and user.role not in {User.Role.STUDENT, User.Role.TUTOR, User.Role.PARENT}:
+            return Response({"detail": "Only students, tutors, or parents can cancel."}, status=status.HTTP_403_FORBIDDEN)
 
         if action in {"ACCEPT", "REJECT", "COMPLETE"} and booking.tutor_id != user.id:
             return Response({"detail": "You can only update your own bookings."}, status=status.HTTP_403_FORBIDDEN)
         if action == "CANCEL" and user.id not in {booking.student_id, booking.tutor_id}:
-            return Response({"detail": "You can only cancel your own booking."}, status=status.HTTP_403_FORBIDDEN)
+            if user.role != User.Role.PARENT or not ParentStudentLink.objects.filter(parent=user, student_id=booking.student_id).exists():
+                return Response({"detail": "You can only cancel your own booking."}, status=status.HTTP_403_FORBIDDEN)
 
         if action == "ACCEPT":
             if booking.status != Booking.Status.PENDING:

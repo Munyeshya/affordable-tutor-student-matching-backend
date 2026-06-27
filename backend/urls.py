@@ -29,6 +29,7 @@ urlpatterns = [
     path('api/bookings/', include('bookings.urls')),
     path('api/catalog/', include('catalog.urls')),
     path('api/notifications/', include('notifications.urls')),
+    path('api/parents/', include('students.urls')),
     path('api/payments/', include('payments.urls')),
     path('api/reviews/', include('reviews.urls')),
     path('api/tutors/', include('tutors.urls')),
