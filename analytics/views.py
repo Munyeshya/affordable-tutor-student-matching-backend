@@ -197,6 +197,8 @@ def build_dashboard_payload():
 
 
 def format_value(value):
+    if isinstance(value, dict):
+        return "; ".join(f"{key.replace('_', ' ').title()}: {format_value(inner_value)}" for key, inner_value in value.items())
     if isinstance(value, (list, tuple)):
         return ", ".join(format_value(item) for item in value)
     if hasattr(value, "strftime"):
@@ -204,7 +206,7 @@ def format_value(value):
     return str(value)
 
 
-def render_printable_report_html(payload):
+def render_printable_report_html(title, subtitle, payload):
     sections = []
     for section_name, section_data in payload.items():
         rows = []
@@ -279,13 +281,146 @@ def render_printable_report_html(payload):
     </head>
     <body>
       <div class="page">
-        <h1>Admin Printable Report</h1>
-        <div class="meta">Affordable Tutor-Student Matching Platform</div>
+        <h1>{title}</h1>
+        <div class="meta">{subtitle}</div>
         {''.join(sections)}
       </div>
     </body>
     </html>
     """
+
+
+def build_student_report_payload(user):
+    profile = getattr(user, "student_profile", None)
+    bookings = Booking.objects.filter(student=user)
+    confirmations = AssessmentResultConfirmation.objects.filter(student=user)
+    purchases = CoursePurchase.objects.filter(student=user, status=CoursePurchase.Status.PAID)
+
+    return {
+        "profile": {
+            "full_name": getattr(profile, "full_name", user.get_full_name() or user.email),
+            "level": getattr(profile, "level", ""),
+            "location": getattr(profile, "location", ""),
+            "budget_min": getattr(profile, "budget_min", None),
+            "budget_max": getattr(profile, "budget_max", None),
+        },
+        "study_summary": {
+            "total_bookings": bookings.count(),
+            "confirmed_bookings": bookings.filter(status=Booking.Status.CONFIRMED).count(),
+            "completed_bookings": bookings.filter(status=Booking.Status.COMPLETED).count(),
+            "course_purchases": purchases.count(),
+            "total_spent": purchases.aggregate(total=Sum("amount"))["total"] or 0,
+        },
+        "learning_summary": {
+            "confirmed_outcomes": confirmations.filter(student_confirmation_status=AssessmentResultConfirmation.Status.CONFIRMED).count(),
+            "average_improvement": confirmations.filter(student_confirmation_status=AssessmentResultConfirmation.Status.CONFIRMED).aggregate(
+                avg=Avg("improvement_percentage")
+            )["avg"]
+            or 0,
+            "latest_confirmations": list(
+                confirmations.order_by("-created_at").values("lesson__title", "improvement_percentage", "student_confirmation_status")[:5]
+            ),
+        },
+        "recent_activity": {
+            "recent_bookings": list(bookings.order_by("-created_at").values("id", "status", "subject__name", "tutor__email")[:5]),
+            "unread_notifications": Notification.objects.filter(user=user, is_read=False).count(),
+        },
+    }
+
+
+def build_tutor_report_payload(user):
+    profile = getattr(user, "tutor_profile", None)
+    verification = getattr(user, "tutor_verification", None)
+    agreement = getattr(user, "tutor_agreement", None)
+    bookings = Booking.objects.filter(tutor=user)
+    course_qs = Course.objects.filter(tutor=user)
+    lesson_qs = Lesson.objects.filter(course__tutor=user)
+    paid_payments = Payment.objects.filter(tutor=user, status=Payment.Status.PAID)
+    reviews = Review.objects.filter(tutor=user)
+
+    return {
+        "profile": {
+            "full_name": getattr(profile, "full_name", user.get_full_name() or user.email),
+            "hourly_rate": getattr(profile, "hourly_rate", None),
+            "location": getattr(profile, "location", ""),
+            "teaches_online": getattr(profile, "teaches_online", False),
+            "teaches_in_person": getattr(profile, "teaches_in_person", False),
+        },
+        "verification": {
+            "status": getattr(verification, "status", None),
+            "required_documents": 2,
+            "agreement_signed": bool(
+                agreement and agreement.status == TutorAgreement.Status.SIGNED and agreement.agreed_to_terms and agreement.signed_file
+            ),
+            "subject_count": user.tutor_subjects.count(),
+            "marketplace_ready": bool(verification and verification.is_marketplace_ready()),
+        },
+        "work_summary": {
+            "total_bookings": bookings.count(),
+            "confirmed_bookings": bookings.filter(status=Booking.Status.CONFIRMED).count(),
+            "completed_bookings": bookings.filter(status=Booking.Status.COMPLETED).count(),
+            "cancelled_bookings": bookings.filter(status=Booking.Status.CANCELLED).count(),
+            "active_courses": course_qs.filter(status=Course.Status.PUBLISHED).count(),
+            "total_lessons": lesson_qs.count(),
+        },
+        "earnings": {
+            "booking_revenue": paid_payments.aggregate(total=Sum("amount"))["total"] or 0,
+            "course_revenue": CoursePurchase.objects.filter(course__tutor=user, status=CoursePurchase.Status.PAID).aggregate(total=Sum("amount"))["total"] or 0,
+            "total_earnings": (
+                paid_payments.aggregate(total=Sum("amount"))["total"] or 0
+            )
+            + (CoursePurchase.objects.filter(course__tutor=user, status=CoursePurchase.Status.PAID).aggregate(total=Sum("amount"))["total"] or 0),
+            "reviews_received": reviews.count(),
+            "average_rating": reviews.aggregate(avg=Avg("rating"))["avg"] or 0,
+        },
+        "recent_activity": {
+            "recent_bookings": list(bookings.order_by("-created_at").values("id", "status", "student__email", "subject__name")[:5]),
+            "recent_courses": list(course_qs.order_by("-created_at").values("id", "title", "status", "price")[:5]),
+        },
+    }
+
+
+def build_parent_report_payload(user):
+    profile = getattr(user, "parent_profile", None)
+    links = ParentStudentLink.objects.filter(parent=user).select_related("student", "student__student_profile")
+    student_ids = links.values_list("student_id", flat=True)
+    bookings = Booking.objects.filter(student_id__in=student_ids)
+    confirmations = AssessmentResultConfirmation.objects.filter(student_id__in=student_ids)
+
+    return {
+        "profile": {
+            "full_name": getattr(profile, "full_name", user.get_full_name() or user.email),
+            "location": getattr(profile, "location", ""),
+            "phone_number": getattr(profile, "phone_number", ""),
+        },
+        "linked_students": {
+            "total_linked_students": links.count(),
+            "primary_links": links.filter(is_primary=True).count(),
+            "student_names": list(links.values_list("student__student_profile__full_name", flat=True)),
+        },
+        "support_summary": {
+            "total_bookings": bookings.count(),
+            "confirmed_bookings": bookings.filter(status=Booking.Status.CONFIRMED).count(),
+            "completed_bookings": bookings.filter(status=Booking.Status.COMPLETED).count(),
+            "confirmed_learning_outcomes": confirmations.filter(student_confirmation_status=AssessmentResultConfirmation.Status.CONFIRMED).count(),
+            "average_improvement": confirmations.filter(student_confirmation_status=AssessmentResultConfirmation.Status.CONFIRMED).aggregate(avg=Avg("improvement_percentage"))["avg"]
+            or 0,
+        },
+        "recent_activity": {
+            "recent_bookings": list(bookings.order_by("-created_at").values("id", "status", "student__email", "tutor__email")[:5]),
+            "recent_confirmations": list(confirmations.order_by("-created_at").values("lesson__title", "improvement_percentage")[:5]),
+        },
+    }
+
+
+def build_user_report_payload(user):
+    if user.role == User.Role.STUDENT:
+        return "Student Report", "Printable student summary", build_student_report_payload(user)
+    if user.role == User.Role.TUTOR:
+        return "Tutor Report", "Printable tutor summary", build_tutor_report_payload(user)
+    if user.role == User.Role.PARENT:
+        return "Parent Report", "Printable parent summary", build_parent_report_payload(user)
+    return "Admin Report", "Affordable Tutor-Student Matching Platform", build_dashboard_payload()
 
 
 class AdminDashboardView(APIView):
@@ -301,7 +436,17 @@ class AdminPrintableReportView(APIView):
 
     def get(self, request):
         payload = build_dashboard_payload()
-        html = render_printable_report_html(payload)
+        html = render_printable_report_html("Admin Printable Report", "Affordable Tutor-Student Matching Platform", payload)
         response = HttpResponse(html, content_type="text/html; charset=utf-8")
         response["Content-Disposition"] = 'inline; filename="admin-printable-report.html"'
+        return response
+
+
+class MyPrintableReportView(APIView):
+    def get(self, request):
+        title, subtitle, payload = build_user_report_payload(request.user)
+        html = render_printable_report_html(title, subtitle, payload)
+        response = HttpResponse(html, content_type="text/html; charset=utf-8")
+        filename = f"{request.user.role.lower()}-report.html"
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
         return response

@@ -77,3 +77,4 @@
 - analytics
 - `/api/analytics/dashboard/`
 - `/api/analytics/report/`
+- `/api/analytics/my-report/`

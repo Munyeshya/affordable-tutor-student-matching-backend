@@ -103,3 +103,19 @@ class AdminDashboardTests(TestCase):
         self.assertIn("Admin Printable Report", body)
         self.assertIn("@page", body)
         self.assertIn("Affordable Tutor-Student Matching Platform", body)
+
+    def test_my_report_changes_by_role(self):
+        self.client.force_authenticate(self.student)
+        student_response = self.client.get("/api/analytics/my-report/")
+        self.assertEqual(student_response.status_code, 200)
+        self.assertIn("Student Report", student_response.content.decode("utf-8"))
+
+        self.client.force_authenticate(self.ready_tutor)
+        tutor_response = self.client.get("/api/analytics/my-report/")
+        self.assertEqual(tutor_response.status_code, 200)
+        self.assertIn("Tutor Report", tutor_response.content.decode("utf-8"))
+
+        self.client.force_authenticate(self.parent)
+        parent_response = self.client.get("/api/analytics/my-report/")
+        self.assertEqual(parent_response.status_code, 200)
+        self.assertIn("Parent Report", parent_response.content.decode("utf-8"))
