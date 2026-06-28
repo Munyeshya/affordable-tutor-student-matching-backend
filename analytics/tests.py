@@ -92,3 +92,14 @@ class AdminDashboardTests(TestCase):
         self.assertEqual(response.data["tutor_pipeline"]["pending_verifications"], 1)
         self.assertEqual(response.data["users"]["total_tutors"], 2)
         self.assertEqual(response.data["employment_impact"]["parent_accounts"], 1)
+
+    def test_printable_report_returns_html_for_admin(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/analytics/report/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/html; charset=utf-8")
+        body = response.content.decode("utf-8")
+        self.assertIn("Admin Printable Report", body)
+        self.assertIn("@page", body)
+        self.assertIn("Affordable Tutor-Student Matching Platform", body)

@@ -76,3 +76,4 @@
 - learning impact summary
 - analytics
 - `/api/analytics/dashboard/`
+- `/api/analytics/report/`
